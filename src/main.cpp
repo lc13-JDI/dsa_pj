@@ -1,26 +1,37 @@
 #include <iostream>
-#include <thread> // 测试多线程库是否链接成功
-#include <windows.h> // 用于解决中文乱码
-#include "Game.h"
+#include <SFML/Graphics.hpp>
 
-void threadTask() {
-    std::cout << "[子线程] 正在加载资源..." << std::endl;
-}
+int main()
+{
+    std::cout << "[Debug] 程序开始运行..." << std::endl;
 
-int main() {
-    // 解决 Windows 控制台中文乱码 (设为 UTF-8)
-    SetConsoleOutputCP(65001);
+    // 创建一个窗口，分辨率 800x600，标题为 "Battle Simulation"
+    sf::RenderWindow window(sf::VideoMode(800, 600), "Battle Simulation");
 
-    std::cout << "[主线程] 程序开始" << std::endl;
+    window.setFramerateLimit(60);
 
-    // 测试多线程
-    std::thread t(threadTask);
-    t.join(); // 等待子线程结束
+    // 创建一个绿色的圆
+    sf::CircleShape shape(100.f);
+    shape.setFillColor(sf::Color::Green);
 
-    // 测试多文件调用
-    Game myGame;
-    myGame.start();
+    // 游戏主循环
+    while (window.isOpen())
+    {
+        sf::Event event;
+        // 处理事件（比如按关闭按钮）
+        while (window.pollEvent(event))
+        {
+            if (event.type == sf::Event::Closed)
+                window.close();
+        }
 
-    system("pause");
+        // 1. 清除上一帧
+        window.clear();
+        // 2. 绘制内容
+        window.draw(shape);
+        // 3. 显示到屏幕
+        window.display();
+    }
+
     return 0;
 }
