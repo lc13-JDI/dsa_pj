@@ -4,7 +4,6 @@ cmake_minimum_required(VERSION 3.16)
 project(BattleSim)
 
 # 1. 设置 C++ 标准
-# 建议使用 C++17 或 C++20，方便使用高级特性
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
@@ -27,8 +26,6 @@ FetchContent_MakeAvailable(sfml)
 include_directories(${CMAKE_SOURCE_DIR}/include)
 #include_directories(${CMAKE_SOURCE_DIR}/extern) # 如果你有第三方库头文件
 
-
-
 # 3. 自动扫描所有源文件
 # 将 src 目录下所有的 .cpp 文件收集到 SOURCES 变量中
 # 注意：如果你添加了新文件，有时需要重新运行 CMake Configure
@@ -41,7 +38,6 @@ find_package(Threads REQUIRED)
 add_executable(BattleSim ${SOURCES})
 
 # 6. 链接库文件 (关键步骤)
-# 链接多线程库
 target_link_libraries(BattleSim PRIVATE Threads::Threads)
 target_link_libraries(BattleSim PRIVATE
     sfml-graphics 
@@ -50,16 +46,21 @@ target_link_libraries(BattleSim PRIVATE
     sfml-audio
 )
 
-
 add_custom_command(TARGET BattleSim POST_BUILD
+    # [操作1] 拷贝 SFML 动态库
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:sfml-graphics>
         $<TARGET_FILE:sfml-window>
         $<TARGET_FILE:sfml-system>
-        $<TARGET_FILE:sfml-audio>
-        # 如果用到了 network，记得把下面这行取消注释
-        # $<TARGET_FILE:sfml-network> 
+        $<TARGET_FILE:sfml-audio> 
         $<TARGET_FILE_DIR:${PROJECT_NAME}>
-    COMMENT "Copying SFML DLLs to executable directory..."
+    
+    # [操作2] 递归拷贝 assets 文件夹
+    # 语法：cmake -E copy_directory <源路径> <目标路径>
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
+
+    COMMENT "正在拷贝 SFML DLL 和 assets 资源文件夹..."
 )
 
