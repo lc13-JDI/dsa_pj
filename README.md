@@ -65,4 +65,8 @@ dsa_pj/                 <-- 项目根目录
 │   └── main.cpp
 ├── include/            <-- 存放所有 .h 头文件
 ├── build/              <-- CMake 自动生成的构建文件夹
+├── assets/
+      ├── textures/        <-- 存放图片
+      ├── audio/           <-- 存放音频
+      └── fonts/           <-- 存放字体
 └── lib/                <-- 存放第三方库 .lib/.a 文件
