@@ -1,14 +1,22 @@
 #include "Game.h"
 #include <iostream>
+#include "Unit.h"
+#include <chrono> // 用于线程休眠
 
-Game::Game() {
+Game::Game() : m_running(false) {
     initWindow();
     initMap();
     initUnits(); // 初始化单位
 }
 
 Game::~Game() {
-    // 释放所有动态分配的单位内存
+    // 1. 停止逻辑线程
+    m_running = false;
+    if (m_logicThread.joinable()) {
+        m_logicThread.join();
+    }
+
+    // 2. 清理内存
     for (auto unit : m_units) {
         delete unit;
     }
@@ -50,50 +58,61 @@ void Game::initMap() {
     // 乙方基地 (下方正中)
     m_mapData[ROWS - 2][COLS / 2] = BASE_B;
 
-    // 5. 添加一些山脉 (MOUNTAIN) - 这里手动添加几个障碍物示例
-    m_mapData[5][3] = MOUNTAIN;
-    m_mapData[5][11] = MOUNTAIN;
-    m_mapData[14][5] = MOUNTAIN;
-    m_mapData[14][9] = MOUNTAIN;
+    // --- 添加一些复杂的山脉，测试寻路 ---
+    // 在左边造一堵墙，强制左边的兵绕远路去右边的桥
+    m_mapData[5][0] = MOUNTAIN;
+    m_mapData[5][1] = MOUNTAIN;
+    m_mapData[5][2] = MOUNTAIN;
+    m_mapData[5][3] = MOUNTAIN; // 封住左边路口的一部分
 
     std::cout << "[Info] Map initialized (" << ROWS << "x" << COLS << ")" << std::endl;
 }
 
 void Game::initUnits() {
-    // --- 场景演示 ---
-    // 左侧：红方大军进攻
+    // 生成两个会相遇的兵，测试战斗
+    // 1. 左下位置生成一个坦克
+    Unit* tank = new Tank(3 * TILE_SIZE, 15 * TILE_SIZE, TEAM_A);
+    tank->setTarget(3 * TILE_SIZE, 5 * TILE_SIZE, m_mapData); 
+    m_units.push_back(tank);
+
+    // 2. 左上位置生成两个近战兵
+    Unit* m1 = new Melee(3 * TILE_SIZE, 5 * TILE_SIZE, TEAM_B);
+    m1->setTarget(3 * TILE_SIZE, 15 * TILE_SIZE, m_mapData);
+    m_units.push_back(m1);
     
-    // 1. 一个肉盾 (Tank) 走在最前面
-    Unit* tankA = new Tank(3 * TILE_SIZE + 20, 2 * TILE_SIZE, TEAM_A);
-    tankA->setTarget(3 * TILE_SIZE + 20, 18 * TILE_SIZE); // 目标：冲到底部
-    m_units.push_back(tankA);
-
-    // 2. 一个远程 (Ranged) 跟在后面
-    // 注意：远程跑得快，你可以观察它是否会追上前面的坦克 (目前没写碰撞，会直接穿过去)
-    Unit* rangedA = new Ranged(3 * TILE_SIZE + 20, 0 * TILE_SIZE, TEAM_A);
-    rangedA->setTarget(3 * TILE_SIZE + 20, 18 * TILE_SIZE);
-    m_units.push_back(rangedA);
-
-
-    // 右侧：蓝方防守
-    
-    // 3. 两个近战 (Melee) 并排冲锋
-    Unit* meleeB1 = new Melee(10 * TILE_SIZE + 20, 15 * TILE_SIZE, TEAM_B);
-    meleeB1->setTarget(10 * TILE_SIZE + 20, 2 * TILE_SIZE); // 目标：冲到顶部
-    m_units.push_back(meleeB1);
-
-    Unit* meleeB2 = new Melee(12 * TILE_SIZE + 20, 15 * TILE_SIZE, TEAM_B);
-    meleeB2->setTarget(12 * TILE_SIZE + 20, 2 * TILE_SIZE); 
-    m_units.push_back(meleeB2);
-
-    std::cout << "[Info] Units initialized: Tank, Ranged, and Melee created." << std::endl;
+    Unit* m2 = new Melee(4 * TILE_SIZE, 5 * TILE_SIZE, TEAM_B); // 稍微错开一点
+    m2->setTarget(3 * TILE_SIZE, 15 * TILE_SIZE, m_mapData);
+    m_units.push_back(m2);
 }
 
 void Game::run() {
+    // 启动逻辑线程
+    m_running = true;
+    m_logicThread = std::thread(&Game::logicLoop, this);
+
+    // 【主线程循环】只负责事件和渲染
     while (m_window.isOpen()) {
         processEvents();
-        update();
         render();
+    }
+    
+    // 窗口关闭后，通知逻辑线程退出
+    m_running = false;
+}
+
+void Game::logicLoop() {
+    sf::Clock clock;
+    while (m_running) {
+        // 计算 Delta Time
+        sf::Time elapsed = clock.restart();
+        float dt = elapsed.asSeconds();
+
+        // 限制逻辑帧率，避免 CPU 100% (大约 60Hz)
+        if (dt < 0.016f) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        update(dt);
     }
 }
 
@@ -105,18 +124,32 @@ void Game::processEvents() {
     }
 }
 
-void Game::update() {
-    // 1. 计算时间增量 (Delta Time)
-    // restart() 会返回自上次调用后经过的时间并重置计时器
-    m_deltaTime = m_dtClock.restart().asSeconds();
+void Game::update(float dt) {
+    // 【加锁】因为我们要读取和修改 m_units，渲染线程也在读
+    std::lock_guard<std::mutex> lock(m_mutex);
 
-    // 2. 更新所有单位
+    // 1. 更新所有单位状态 (移动、攻击)
     for (auto unit : m_units) {
-        unit->update(m_deltaTime);
+        // 传入 m_units 供单位寻找敌人
+        unit->update(dt, m_units);
+    }
+
+    // 2. 清理尸体 (Remove Dead Units)
+    auto it = m_units.begin();
+    while (it != m_units.end()) {
+        if ((*it)->isDead()) {
+            delete *it; // 释放内存
+            it = m_units.erase(it); // 从列表移除
+        } else {
+            ++it;
+        }
     }
 }
 
 void Game::render() {
+    // 【加锁】我们要读 m_units 来画图，防止读的时候被逻辑线程删掉了
+    std::lock_guard<std::mutex> lock(m_mutex);
+
     m_window.clear();
 
     // 创建一个通用的矩形形状用于绘制格子

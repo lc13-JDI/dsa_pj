@@ -1,7 +1,12 @@
 #pragma once
 #include <SFML/Graphics.hpp>
 #include <vector>
-#include "Unit.h"
+#include <thread> 
+#include <mutex> 
+#include <atomic> // 用于线程安全的 bool
+
+
+class Unit; // 前向声明
 
 // 地形类型枚举
 enum TileType {
@@ -39,9 +44,13 @@ private:
     // 1. 单位列表 (使用指针实现多态)
     std::vector<Unit*> m_units; 
     
-    // 2. 时间控制
-    sf::Clock m_dtClock;  // 创建一个时钟对象
-    float m_deltaTime; // 存储时间间隔的变量
+    // --- 多线程相关 ---
+    std::thread m_logicThread; // 逻辑线程
+    std::mutex m_mutex;        // 数据锁 (保护 m_units)
+    std::atomic<bool> m_running; // 线程运行标志
+    
+    // 逻辑循环函数 (将在单独线程中运行)
+    void logicLoop();
 
     // 初始化功能
     void initWindow();
@@ -50,6 +59,7 @@ private:
 
     // 核心循环逻辑
     void processEvents();
-    void update();
+   // update 函数不再被主线程调用，而是被 logicLoop 调用
+    void update(float dt); 
     void render();
 };
