@@ -29,7 +29,7 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 # 3. 自动扫描所有源文件
 # 将 src 目录下所有的 .cpp 文件收集到 SOURCES 变量中
 # 注意：如果你添加了新文件，有时需要重新运行 CMake Configure
-file(GLOB_RECURSE SOURCES "src/*.cpp")
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 
 # 4. 查找并链接系统线程库 (多线程必须)
 find_package(Threads REQUIRED)
