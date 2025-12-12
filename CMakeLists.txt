@@ -46,6 +46,17 @@ target_link_libraries(BattleSim PRIVATE
     sfml-audio
 )
 
+# --- 【关键修复】 自动判断架构并定位 OpenAL DLL ---
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(SFML_ARCH_DIR "x64")
+else()
+    set(SFML_ARCH_DIR "x86")
+endif()
+
+# 这里的路径是基于 FetchContent 下载下来的 SFML 源码结构的
+set(OPENAL_DLL_PATH "${sfml_SOURCE_DIR}/extlibs/bin/${SFML_ARCH_DIR}/openal32.dll")
+
+
 add_custom_command(TARGET BattleSim POST_BUILD
     # [操作1] 拷贝 SFML 动态库
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -55,7 +66,12 @@ add_custom_command(TARGET BattleSim POST_BUILD
         $<TARGET_FILE:sfml-audio> 
         $<TARGET_FILE_DIR:${PROJECT_NAME}>
     
-    # [操作2] 递归拷贝 assets 文件夹
+    # [操作2] 拷贝 OpenAL (修复 Audio 模块导致的启动失败)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${OPENAL_DLL_PATH}
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+
+    # [操作3] 递归拷贝 assets 文件夹
     # 语法：cmake -E copy_directory <源路径> <目标路径>
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/assets

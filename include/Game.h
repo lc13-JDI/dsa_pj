@@ -31,7 +31,7 @@ public:
     // 静态常量：定义地图大小
     static const int TILE_SIZE = 40; // 每个格子的像素大小
     static const int ROWS = 20;      // 20行
-    static const int COLS = 15;      // 15列
+    static const int COLS = 25;      // 25列
 
 private:
     // SFML 窗口
@@ -43,6 +43,9 @@ private:
 
     // 1. 单位列表 (使用指针实现多态)
     std::vector<Unit*> m_units; 
+
+    // 背景精灵
+    sf::Sprite m_bgSprite;
     
     // --- 多线程相关 ---
     std::thread m_logicThread; // 逻辑线程

@@ -2,8 +2,13 @@
 #include <iostream>
 #include "Unit.h"
 #include <chrono> // 用于线程休眠
+#include "ResourceManager.h"
 
 Game::Game() : m_running(false) {
+    // 1. 加载资源
+    ResourceManager::getInstance().loadAllAssets(); // 加载所有资源
+
+    // 2. 初始化窗口和地图
     initWindow();
     initMap();
     initUnits(); // 初始化单位
@@ -32,56 +37,66 @@ void Game::initWindow() {
     m_window.create(sf::VideoMode(width, height), "Battle Simulation - Phase 1");
     // 设置帧率限制为 60 FPS
     m_window.setFramerateLimit(60);
+
+    // 设置背景图
+    sf::Texture& bgTexture = ResourceManager::getInstance().getTexture("background");
+    m_bgSprite.setTexture(bgTexture);
+
+    // 计算缩放比例，让背景图完全适应窗口大小
+    float scaleX = static_cast<float>(width) / bgTexture.getSize().x;
+    float scaleY = static_cast<float>(height) / bgTexture.getSize().y;
+    m_bgSprite.setScale(scaleX, scaleY);
 }
 
 void Game::initMap() {
-    // 1. 初始化所有格子为平地 (GROUND)
-    m_mapData.resize(ROWS, std::vector<int>(COLS, GROUND));
+    // 1. 全部重置为平地
+    m_mapData.assign(ROWS, std::vector<int>(COLS, GROUND));
 
-    // 2. 绘制河流 (RIVER) - 假设在地图中间的第 9 和 10 行
+    // 2. 设置河流 (假设在第 9 行，横贯整个地图)
+    int riverRow = 10;
     for (int c = 0; c < COLS; c++) {
-        m_mapData[9][c] = RIVER;
-        m_mapData[10][c] = RIVER;
+        m_mapData[riverRow][c] = RIVER;
     }
 
-    // 3. 绘制桥梁 (BRIDGE) - 左侧桥和右侧桥
-    // 左桥 (第3列)
-    m_mapData[9][3] = BRIDGE;
-    m_mapData[10][3] = BRIDGE;
-    // 右桥 (第11列)
-    m_mapData[9][11] = BRIDGE;
-    m_mapData[10][11] = BRIDGE;
+    // 3. 设置桥梁 (左桥和右桥)
+    m_mapData[riverRow][10] = BRIDGE;// 左桥
+    m_mapData[riverRow][14] = BRIDGE;// 右桥
 
-    // 4. 设置基地 (BASE)
-    // 甲方基地 (上方正中)
-    m_mapData[1][COLS / 2] = BASE_A;
-    // 乙方基地 (下方正中)
-    m_mapData[ROWS - 2][COLS / 2] = BASE_B;
+    // 4. 设置基地 (模仿皇室战争布局)
+    // 甲方 (上方, Team A)
+    m_mapData[5][12] = BASE_A;  // 国王塔 (中间)
+    m_mapData[6][10] = BASE_A;  // 左公主塔
+    m_mapData[6][14] = BASE_A; // 右公主塔
 
-    // --- 添加一些复杂的山脉，测试寻路 ---
-    // 在左边造一堵墙，强制左边的兵绕远路去右边的桥
-    m_mapData[5][0] = MOUNTAIN;
-    m_mapData[5][1] = MOUNTAIN;
-    m_mapData[5][2] = MOUNTAIN;
-    m_mapData[5][3] = MOUNTAIN; // 封住左边路口的一部分
+    // 乙方 (下方, Team B)
+    m_mapData[15][12] = BASE_B; // 国王塔 (中间)
+    m_mapData[14][10] = BASE_B; // 左公主塔
+    m_mapData[14][14] = BASE_B;// 右公主塔
 
-    std::cout << "[Info] Map initialized (" << ROWS << "x" << COLS << ")" << std::endl;
+    // 5. 设置边缘障碍 (可选，防止兵走出画面太远)
+    for (int r = 0; r < ROWS; r++) {
+        m_mapData[r][8] = MOUNTAIN;          // 左边界
+        m_mapData[r][16] = MOUNTAIN;         // 右边界
+    }
+
+    std::cout << "[Info] Map initialized with CR layout." << std::endl;
 }
 
 void Game::initUnits() {
-    // 生成两个会相遇的兵，测试战斗
-    // 1. 左下位置生成一个坦克
-    Unit* tank = new Tank(3 * TILE_SIZE, 15 * TILE_SIZE, TEAM_A);
-    tank->setTarget(3 * TILE_SIZE, 5 * TILE_SIZE, m_mapData); 
+    // 调整生成位置以适应新地图
+    // Team A 坦克
+    Unit* tank = new Tank(10 * TILE_SIZE, 6 * TILE_SIZE, TEAM_A); // 国王塔前
+    tank->setTarget(10 * TILE_SIZE, 13 * TILE_SIZE, m_mapData); 
     m_units.push_back(tank);
 
-    // 2. 左上位置生成两个近战兵
-    Unit* m1 = new Melee(3 * TILE_SIZE, 5 * TILE_SIZE, TEAM_B);
-    m1->setTarget(3 * TILE_SIZE, 15 * TILE_SIZE, m_mapData);
+    // Team B 近战
+    Unit* m1 = new Melee(9 * TILE_SIZE, 15 * TILE_SIZE, TEAM_B); // 左路
+    m1->setTarget(9 * TILE_SIZE, 6 * TILE_SIZE, m_mapData);
     m_units.push_back(m1);
     
-    Unit* m2 = new Melee(4 * TILE_SIZE, 5 * TILE_SIZE, TEAM_B); // 稍微错开一点
-    m2->setTarget(3 * TILE_SIZE, 15 * TILE_SIZE, m_mapData);
+    // Team B 另一个近战
+    Unit* m2 = new Melee(14 * TILE_SIZE, 15 * TILE_SIZE, TEAM_B); // 右路
+    m2->setTarget(14 * TILE_SIZE, 6 * TILE_SIZE, m_mapData);
     m_units.push_back(m2);
 }
 
@@ -98,6 +113,9 @@ void Game::run() {
     
     // 窗口关闭后，通知逻辑线程退出
     m_running = false;
+    if (m_logicThread.joinable()) {
+        m_logicThread.join(); // 等待线程安全退出
+    }
 }
 
 void Game::logicLoop() {
@@ -152,54 +170,46 @@ void Game::render() {
 
     m_window.clear();
 
-    // 创建一个通用的矩形形状用于绘制格子
-    sf::RectangleShape tileShape(sf::Vector2f(TILE_SIZE, TILE_SIZE));
-    
-    // 设置格子的边框，这样能看清网格线
-    tileShape.setOutlineThickness(1.0f);
-    tileShape.setOutlineColor(sf::Color(50, 50, 50)); // 深灰色边框
+    // 1. [新增] 绘制背景图
+    m_window.draw(m_bgSprite);
 
-    // 遍历地图数据并绘制
+    //2. 绘制半透明网格 (调试用，如果不想看格子可以注释掉这一段)
+    //这里我们只绘制 基地、河流和桥梁的调试色块，平地设为透明以便看到背景图
+    sf::RectangleShape tileShape(sf::Vector2f(TILE_SIZE, TILE_SIZE));
+    tileShape.setOutlineThickness(1.0f);
+    tileShape.setOutlineColor(sf::Color(0, 0, 0, 50)); // 极淡的边框
+
     for (int r = 0; r < ROWS; r++) {
         for (int c = 0; c < COLS; c++) {
-            // 设置位置
             tileShape.setPosition(c * TILE_SIZE, r * TILE_SIZE);
-
-            // 根据地形类型设置颜色
             int type = m_mapData[r][c];
-            switch (type) {
-                case GROUND:
-                    tileShape.setFillColor(sf::Color(100, 200, 100)); // 浅绿
-                    break;
-                case RIVER:
-                    tileShape.setFillColor(sf::Color(50, 150, 250)); // 蓝色
-                    break;
-                case BRIDGE:
-                    tileShape.setFillColor(sf::Color(160, 82, 45)); // 棕色/木色
-                    break;
-                case MOUNTAIN:
-                    tileShape.setFillColor(sf::Color(100, 100, 100)); // 灰色
-                    break;
-                case BASE_A:
-                    tileShape.setFillColor(sf::Color(200, 50, 50)); // 红色 (敌方/甲方)
-                    break;
-                case BASE_B:
-                    tileShape.setFillColor(sf::Color(50, 50, 200)); // 蓝色 (我方/乙方)
-                    break;
-                default:
-                    tileShape.setFillColor(sf::Color::White);
-                    break;
+            
+            // 默认全透明，显示背景图
+            tileShape.setFillColor(sf::Color::Transparent); 
+
+            // 为特殊地形添加半透明遮罩，确认逻辑位置是否对齐
+            if (type == RIVER) {
+                tileShape.setFillColor(sf::Color(0, 0, 255, 100)); // 半透明蓝
+            } else if (type == BRIDGE) {
+                tileShape.setFillColor(sf::Color(139, 69, 19, 100)); // 半透明棕
+            } else if (type == BASE_A) {
+                tileShape.setFillColor(sf::Color(255, 0, 0, 150)); // 半透明红
+            } else if (type == BASE_B) {
+                tileShape.setFillColor(sf::Color(0, 0, 255, 150)); // 半透明蓝
             }
 
-            // 绘制
-            m_window.draw(tileShape);
+            // 只有非平地才画出来 (或者你可以画所有格子调试)
+            if (type != GROUND) {
+                m_window.draw(tileShape);
+            }
         }
     }
 
-    // 绘制所有单位
+    // 3. 绘制单位
     for (auto unit : m_units) {
         unit->render(m_window);
     }
 
+    // 4. 显示窗口内容
     m_window.display();
 }
