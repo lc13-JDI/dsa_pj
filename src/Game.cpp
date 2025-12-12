@@ -83,21 +83,46 @@ void Game::initMap() {
 }
 
 void Game::initUnits() {
-    // 调整生成位置以适应新地图
-    // Team A 坦克
-    Unit* tank = new Tank(10 * TILE_SIZE, 6 * TILE_SIZE, TEAM_A); // 国王塔前
-    tank->setTarget(10 * TILE_SIZE, 13 * TILE_SIZE, m_mapData); 
-    m_units.push_back(tank);
+    // 测试 6 种兵种
 
-    // Team B 近战
-    Unit* m1 = new Melee(9 * TILE_SIZE, 15 * TILE_SIZE, TEAM_B); // 左路
-    m1->setTarget(9 * TILE_SIZE, 6 * TILE_SIZE, m_mapData);
-    m_units.push_back(m1);
+    // TEAM A (上方，红色方) ------------------------------
     
-    // Team B 另一个近战
-    Unit* m2 = new Melee(14 * TILE_SIZE, 15 * TILE_SIZE, TEAM_B); // 右路
-    m2->setTarget(14 * TILE_SIZE, 6 * TILE_SIZE, m_mapData);
-    m_units.push_back(m2);
+    // 1. Knight (对抗 Giant): 近战对砍
+    Unit* knight = new Knight(10 * TILE_SIZE, 6 * TILE_SIZE, TEAM_A);
+    knight->setTarget(10 * TILE_SIZE, 13 * TILE_SIZE, m_mapData);
+    m_units.push_back(knight);
+
+    // 2. Pekka (中路): 测试高伤害坦克
+    Unit* pekka = new Pekka(12 * TILE_SIZE, 7 * TILE_SIZE, TEAM_A);
+    pekka->setTarget(12 * TILE_SIZE, 12 * TILE_SIZE, m_mapData);
+    m_units.push_back(pekka);
+
+    // 3. Valkyrie (右路): 测试 AOE
+    Unit* valkyrie = new Valkyrie(14 * TILE_SIZE, 6 * TILE_SIZE, TEAM_A);
+    valkyrie->setTarget(14 * TILE_SIZE, 13 * TILE_SIZE, m_mapData);
+    m_units.push_back(valkyrie);
+
+
+    // TEAM B (下方，蓝色方) ------------------------------
+
+    // 4. Giant (左路): 测试只打建筑
+    Unit* giant = new Giant(10 * TILE_SIZE, 12 * TILE_SIZE, TEAM_B);
+    giant->setTarget(10 * TILE_SIZE, 7 * TILE_SIZE, m_mapData); 
+    m_units.push_back(giant);
+
+    // 5. Dart Goblin (中路后排): 远程高攻速
+    Unit* dg = new DartGoblin(12 * TILE_SIZE, 12 * TILE_SIZE, TEAM_B);
+    dg->setTarget(12 * TILE_SIZE, 7 * TILE_SIZE, m_mapData);
+    m_units.push_back(dg);
+
+    // 6. Archers (右路): 两个弓箭手围攻 Valkyrie (测试 AOE 效果)
+    Unit* archer1 = new Archers(14 * TILE_SIZE, 13 * TILE_SIZE, TEAM_B);
+    archer1->setTarget(13 * TILE_SIZE, 7 * TILE_SIZE, m_mapData);
+    m_units.push_back(archer1);
+
+    Unit* archer2 = new Archers(12 * TILE_SIZE, 13 * TILE_SIZE, TEAM_B);
+    archer2->setTarget(14 * TILE_SIZE, 8 * TILE_SIZE, m_mapData);
+    m_units.push_back(archer2);
 }
 
 void Game::run() {
