@@ -21,6 +21,20 @@ Unit::Unit(float x, float y, Team team)
     setPosition(x, y);
 }
 
+// 初始化音效并播放部署声音
+void Unit::initSounds(const std::string& deployKey, const std::string& hitKey) {
+    try {
+        // 从 ResourceManager 获取 SoundBuffer
+        m_deploySound.setBuffer(ResourceManager::getInstance().getSoundBuffer(deployKey));
+        m_hitSound.setBuffer(ResourceManager::getInstance().getSoundBuffer(hitKey));
+        
+        // 立即播放部署音效
+        m_deploySound.play();
+    } catch (const std::exception& e) {
+        std::cerr << "[Unit] Error loading sounds: " << e.what() << std::endl;
+    }
+}
+
 // 扣血逻辑
 void Unit::takeDamage(float damage) {
     m_hp -= damage;
@@ -54,6 +68,11 @@ Unit* Unit::findClosestEnemy(const std::vector<Unit*>& allUnits) {
 void Unit::performAttack(Unit* target, const std::vector<Unit*>& allUnits) {
     if (target) {
         target->takeDamage(m_atk);
+        // 播放攻击音效
+        // 为了防止音效过于频繁重叠（比如攻速极快时），可以检查是否正在播放
+        // 但对于打击感来说，通常直接播放或者用 stop() 再 play() 会更干脆
+        // m_hitSound.stop(); // 可选：打断上一次
+        m_hitSound.play();
     }
 }
 
@@ -215,6 +234,8 @@ Giant::Giant(float x, float y, Team team) : Tank(x, y, team) {
     // 顺序: Up, UpRight, Right, DownRight, Down
     setAttackRows(1, 4, 3, 0, 2);
     setWalkRows(9, 7, 6, 8, 5);
+
+    initSounds("sfx_deploy_giant", "sfx_hit_giant");
 }
 
 // 巨人只攻击建筑。目前游戏中没有建筑Unit，所以他会忽略所有兵，
@@ -238,6 +259,8 @@ Pekka::Pekka(float x, float y, Team team) : Tank(x, y, team) {
 
     setAttackRows(4, 2, 1, 3, 0);
     setWalkRows(6, 9, 8, 5, 7);
+
+    initSounds("sfx_deploy_pekka", "sfx_hit_pekka");
 }
 
 // --- 3. Knight (骑士) ---
@@ -254,6 +277,8 @@ Knight::Knight(float x, float y, Team team) : Melee(x, y, team) {
 
     setAttackRows(4, 2, 1, 3, 0);
     setWalkRows(6, 9, 8, 5, 7);
+
+    initSounds("sfx_deploy_knight", "sfx_hit_knight");
 }
 
 // --- 4. Valkyrie (瓦基丽) ---
@@ -271,6 +296,8 @@ Valkyrie::Valkyrie(float x, float y, Team team) : Melee(x, y, team) {
 
     setAttackRows(4, 2, 1, 3, 0);
     setWalkRows(8, 6, 9, 5, 7);
+
+    initSounds("sfx_deploy_valkyrie", "sfx_hit_valkyrie");
 }
 
 // 瓦基丽的特色：AOE 攻击
@@ -306,6 +333,8 @@ Archers::Archers(float x, float y, Team team) : Ranged(x, y, team) {
 
     setAttackRows(4, 2, 1, 3, 0);
     setWalkRows(9, 6, 8, 5, 7);
+
+    initSounds("sfx_deploy_archers", "sfx_hit_archers");
 }
 
 // --- 6. Dart Goblin (吹箭哥布林) ---
@@ -324,4 +353,6 @@ DartGoblin::DartGoblin(float x, float y, Team team) : Ranged(x, y, team) {
 
     setAttackRows(4, 2, 1, 3, 0);
     setWalkRows(6, 9, 8, 5, 7);
+
+    initSounds("sfx_deploy_dartgoblin", "sfx_hit_dartgoblin");
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 #include <vector>
 #include <deque> // 使用双端队列存储路径
 #include "Game.h" // 需要知道 TILE_SIZE
@@ -58,6 +59,13 @@ protected:
     // --- 寻路相关 ---
     // 存储一系列要走过的世界坐标点
     std::deque<sf::Vector2f> m_pathQueue; 
+
+    //  音频组件
+    sf::Sound m_deploySound; // 部署/出生时播放
+    sf::Sound m_hitSound;    // 攻击造成伤害时播放
+
+    //  辅助函数：初始化音效
+    void initSounds(const std::string& deployKey, const std::string& hitKey);
     
     // 辅助：沿着路径移动
     void followPath(float dt);
