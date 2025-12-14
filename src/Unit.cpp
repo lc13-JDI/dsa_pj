@@ -1,4 +1,5 @@
 #include "Unit.h"
+#include "Tower.h"
 #include "Pathfinder.h" 
 #include "ResourceManager.h"
 #include <cmath> // 用于 sqrt, atan2 等
@@ -6,7 +7,9 @@
 
 // ======================= 基类 Unit =======================
 Unit::Unit(float x, float y, Team team) 
-    : m_team(team), m_attackTimer(0.f), m_facingDir(0.f, 1.f) // 默认朝下
+    : m_team(team), m_attackTimer(0.f), m_facingDir(0.f, 1.f), // 默认朝下
+        m_hasCrown(false), m_barMaxWidth(40.f), m_lockedEnemy(nullptr),
+        m_repathTimer(0.f) // 【新增】初始化计时器
 {
     // 默认属性 (作为一个兜底，子类会覆盖它)
     m_hp = 100.f;
@@ -14,6 +17,7 @@ Unit::Unit(float x, float y, Team team)
     m_atk = 10.f;
     m_speed = 60.f; // 每秒移动 60 像素
     m_range = 60.f; 
+    m_aggroRange = 150.f; // 默认警戒范围
     m_attackInterval = 1.0f; // 默认1秒打一次
 
     // [Movable 初始化]
@@ -22,6 +26,27 @@ Unit::Unit(float x, float y, Team team)
 
     // 默认 UI 初始化 (防止忘记调用)
     initUI(false); 
+}
+
+void Unit::setStrategicTarget(float x, float y) {
+    m_strategicTarget = sf::Vector2f(x, y);
+    // 初始设置时，清空路径，以便下次 update 自动计算
+    m_pathQueue.clear();
+}
+
+void Unit::pathfindToStrategic(const std::vector<std::vector<int>>& mapData) {
+    sf::Vector2f startPos = getPosition();
+    int startCol = static_cast<int>(startPos.x) / Game::TILE_SIZE;
+    int startRow = static_cast<int>(startPos.y) / Game::TILE_SIZE;
+    
+    int endCol = static_cast<int>(m_strategicTarget.x) / Game::TILE_SIZE;
+    int endRow = static_cast<int>(m_strategicTarget.y) / Game::TILE_SIZE;
+
+    std::vector<sf::Vector2i> gridPath = Pathfinder::findPath(mapData, {startCol, startRow}, {endCol, endRow});
+    m_pathQueue.clear();
+    for (const auto& node : gridPath) {
+        m_pathQueue.push_back(sf::Vector2f(node.x * Game::TILE_SIZE + Game::TILE_SIZE / 2.0f, node.y * Game::TILE_SIZE + Game::TILE_SIZE / 2.0f));
+    }
 }
 
 void Unit::initUI(bool hasCrown, float barWidth, float barHeight, float yOffset) {
@@ -113,7 +138,8 @@ void Unit::takeDamage(float damage) {
     getSprite().setColor(sf::Color::Red);
 }
 
-// 默认寻敌逻辑：找最近的活着的敌人
+// 默认寻敌：优先找士兵，其次找塔
+// 这里我们做一个改动：这个函数只负责“索敌范围”内的搜索
 Unit* Unit::findClosestEnemy(const std::vector<Unit*>& allUnits) {
     Unit* closest = nullptr;
     float minDist = 99999.f;
@@ -127,6 +153,14 @@ Unit* Unit::findClosestEnemy(const std::vector<Unit*>& allUnits) {
         sf::Vector2f diff = other->getPosition() - this->getPosition();
         float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
 
+        // 只关注 aggroRange 内的
+        // 注意：如果是塔，我们不需要 aggroRange 限制？
+        // 不，我们希望单位只有走到塔附近才攻击塔，而不是隔着半个地图就锁定塔。
+        // 所以统一用 aggroRange 限制是合理的。
+        if (dist > m_aggroRange) continue;
+
+        // 优先级逻辑：如果已经有一个非塔目标，就不考虑塔
+        // 或者简单点：找最近的即可。因为塔通常比较远，兵比较近。
         if (dist < minDist) {
             minDist = dist;
             closest = other;
@@ -148,7 +182,7 @@ void Unit::performAttack(Unit* target, const std::vector<Unit*>& allUnits) {
 }
 
 // 【核心 AI 逻辑】
-void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles) {
+void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) {
     if (getSprite().getColor() != sf::Color::White) {
         // 简单的颜色恢复渐变效果
         sf::Color c = getSprite().getColor();
@@ -169,51 +203,137 @@ void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Proj
     // 0. 更新攻击计时器
     if (m_attackTimer > 0) m_attackTimer -= dt;
 
-    // 1. 尝试寻找敌人(虚函数，Giant会重写)
-    Unit* target = findClosestEnemy(allUnits);
-    float distToEnemy = 99999.f;
+    // ================= AI 决策树 =================
 
-    if (target) {
-        sf::Vector2f diff = target->getPosition() - this->getPosition();
-        distToEnemy = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+    // 1. 验证当前锁定的敌人是否依然有效 (存活且在警戒范围内)
+    if (m_lockedEnemy) {
+        if (m_lockedEnemy->isDead()) {
+            m_lockedEnemy = nullptr;
+        } else {
+            sf::Vector2f diff = m_lockedEnemy->getPosition() - getPosition();
+            float dist = std::sqrt(diff.x*diff.x + diff.y*diff.y);
+            if (dist > m_aggroRange * 1.5f) { // 追太远就放弃 (防抖动，给个1.5倍缓冲)
+                m_lockedEnemy = nullptr;
+            }
+        }
     }
 
-    AnimState currentState = AnimState::WALK; // 默认为行走状态 (即使原地不动也播放行走或者Idle)
-
-    // 2. 决策：打还是走？
-    if (target && distToEnemy <= m_range) {
-        // --- 状态：攻击 ---
-        // --- 攻击状态 ---
-        currentState = AnimState::ATTACK;
-        // 更新朝向指向敌人
-        m_facingDir = target->getPosition() - getPosition();
-        // 既然在射程内，就不移动了，直接开火
-        if (m_attackTimer <= 0) {
-            //执行攻击(虚函数，Valkyrie会重写)
-            performAttack(target, allUnits);
-            m_attackTimer = m_attackInterval; // 重置冷却
+    // 2. 如果没有锁定敌人，尝试索敌 (Giant 会忽略这一步因为 findClosestEnemy 返回 nullptr)
+    if (!m_lockedEnemy) {
+        Unit* potential = findClosestEnemy(allUnits);
+        if (potential) {
+            sf::Vector2f diff = potential->getPosition() - getPosition();
+            float dist = std::sqrt(diff.x*diff.x + diff.y*diff.y);
+            if (dist <= m_aggroRange) {
+                m_lockedEnemy = potential;
+                // 一旦发现敌人，清空推塔路径，准备战斗/追击
+                m_pathQueue.clear(); 
+            }
         }
-    } else {
-        // --- 状态：移动 ---
-        // 没敌人或者敌人在射程外，继续赶路
-        if (!m_pathQueue.empty()) {
-            // 计算移动方向
-            sf::Vector2f targetPos = m_pathQueue.front();
-            sf::Vector2f diff = targetPos - getPosition();
-            float len = std::sqrt(diff.x*diff.x + diff.y*diff.y);
-            if(len > 0.1f) {
-                m_facingDir = diff; // 更新朝向
-            }           
-            // 实际移动
+    }
+
+    AnimState currentState = AnimState::WALK;
+
+    // 3. 战斗逻辑 (针对 Locked Enemy)
+    if (m_lockedEnemy) {
+        sf::Vector2f enemyPos = m_lockedEnemy->getPosition();
+        sf::Vector2f diff = enemyPos - getPosition();
+        float dist = std::sqrt(diff.x*diff.x + diff.y*diff.y);
+        m_facingDir = diff; // 面向敌人
+
+        if (dist <= m_range) {
+            // 射程内 -> 攻击
+            currentState = AnimState::ATTACK;
+            if (m_attackTimer <= 0) {
+                performAttack(m_lockedEnemy, allUnits);
+                m_attackTimer = m_attackInterval; 
+            }
+        } else {
+            // --- 射程外，追击 (修复Bug: 使用寻路而非直线移动) ---
+            m_repathTimer -= dt;
+            
+            // 如果路径走完了(但还没追上)，或者过了0.5秒(敌人位置变了)，就重新寻路
+            if (m_pathQueue.empty() || m_repathTimer <= 0.f) {
+                setTarget(enemyPos.x, enemyPos.y, mapData);
+                m_repathTimer = 0.5f; // 重置计时器
+            }
+            
+            // 沿路径移动
             followPath(dt);
-        }
-        // 如果没有路径，就保持 WALK 状态但是原地不动（Idle）
-    }
-    // [关键] 更新动画和朝向
-    // 更新动画：传入当前状态和朝向
-    updateAnimation(dt, m_facingDir, currentState);
 
-    // 【关键】每帧更新 UI 位置和状态
+            // 更新朝向
+            if (!m_pathQueue.empty()) {
+                sf::Vector2f next = m_pathQueue.front();
+                sf::Vector2f d = next - getPosition();
+                float len = std::sqrt(d.x*d.x + d.y*d.y);
+                if (len > 0.1f) m_facingDir = d;
+            }
+        }
+    } 
+    // 4. 推塔逻辑 (无敌人干扰)
+    else {
+        // (A) 检查当前战略目标（塔）是否还活着
+        bool isStrategicAlive = false;
+        // 简单判断：目标位置附近是否有活着的 Tower
+        for (auto u : allUnits) {
+            if (u->isDead()) continue;
+            // 必须是塔，必须是敌方
+            if (dynamic_cast<Tower*>(u) && u->getTeam() != m_team) {
+                sf::Vector2f diff = u->getPosition() - m_strategicTarget;
+                float d = std::sqrt(diff.x*diff.x + diff.y*diff.y);
+                // 如果距离非常近（同一个格子），说明塔还活着
+                if (d < 20.0f) {
+                    isStrategicAlive = true;
+                    break;
+                }
+            }
+        }
+
+        // (B) 如果目标塔挂了，切换到敌方国王塔
+        if (!isStrategicAlive) {
+            float kingX = 12 * Game::TILE_SIZE + 20;
+            float kingY = (m_team == TEAM_A) ? (15 * Game::TILE_SIZE + 20) : (5 * Game::TILE_SIZE + 20);
+            
+            // 如果已经是国王塔了就不切了，避免死循环
+            // 简单距离判断
+            float distToKing = std::abs(m_strategicTarget.y - kingY);
+            if (distToKing > 50.0f) { // 说明当前不是国王塔
+                m_strategicTarget = sf::Vector2f(kingX, kingY);
+                m_pathQueue.clear(); // 目标变了，重算路径
+            }
+        }
+
+        // (C) 移动向战略目标
+        // 如果没有路径，计算路径
+        if (m_pathQueue.empty()) {
+            pathfindToStrategic(mapData);
+        }
+        
+        // 沿路径移动 (最后一段距离如果是攻击范围，可以提前停，但为了简单我们让它走到面前)
+        // 优化：如果和目标距离小于 range，其实也可以停下来攻击塔了。
+        // 为了复用攻击逻辑，我们这里只管走路。当走进塔的范围，findClosestEnemy 可能会返回塔，
+        // 从而在下一帧进入 "战斗逻辑"。
+        
+        // 这里有一个特殊的点：如果单位是 Giant，findClosestEnemy 会返回塔。
+        // 如果单位是 Knight，findClosestEnemy 也会返回塔（因为塔也是 Enemy）。
+        // 所以，为了避免还在走路却已经进入射程不攻击的问题，我们可以让 findClosestEnemy 
+        // 始终接管“攻击判定”。
+        // 但为了保持 "有兵打兵，没兵推塔" 的优先级，我们刚才的逻辑是：
+        // "findClosestEnemy" 应该优先返回兵。
+        // 让我们修正一下 findClosestEnemy 的逻辑。
+        
+        followPath(dt);
+        
+        // 如果正在移动，更新朝向
+        if (!m_pathQueue.empty()) {
+            sf::Vector2f next = m_pathQueue.front();
+            sf::Vector2f diff = next - getPosition();
+            float len = std::sqrt(diff.x*diff.x + diff.y*diff.y);
+            if (len > 0.1f) m_facingDir = diff;
+        }
+    }
+
+    updateAnimation(dt, m_facingDir, currentState);
     updateUI();
 }
 
@@ -326,8 +446,28 @@ Giant::Giant(float x, float y, Team team) : Tank(x, y, team) {
 
 // 巨人只攻击建筑。目前游戏中没有建筑Unit，所以他会忽略所有兵，
 // 这样他就会一直执行 moveToTarget 走向敌方基地。
+// Giant 只看塔
 Unit* Giant::findClosestEnemy(const std::vector<Unit*>& allUnits) {
-    return nullptr; 
+    Unit* closest = nullptr;
+    float minDist = 99999.f;
+    for (auto other : allUnits) {
+        if (!other || other == this || other->isDead() || other->getTeam() == this->getTeam()) continue;
+        
+        // 必须是塔
+        if (!dynamic_cast<Tower*>(other)) continue;
+
+        sf::Vector2f diff = other->getPosition() - this->getPosition();
+        float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+        
+        // 同样受限于 aggroRange (或者 Giant 可以全图索敌？通常还是走过去再说)
+        // 为了让 Giant 走到塔面前再攻击，这里可以加上 Range 限制，
+        // 或者因为 Giant 的 update 里 m_pathQueue 会带他走过去，
+        // 所以当他走近时，这个函数自然会返回塔。
+        if (dist <= m_range + 20.0f) { // 稍微宽容一点，保证能停下来打
+             if (dist < minDist) { minDist = dist; closest = other; }
+        }
+    }
+    return closest;
 }
 
 // --- 2. PEKKA (皮卡) ---

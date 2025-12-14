@@ -73,7 +73,7 @@ Tower::Tower(float x, float y, Team team, TowerType type)
     m_sprite.setColor(sf::Color::Transparent); 
 }
 
-void Tower::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles) {
+void Tower::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) {
     // // 0. 受击闪烁恢复逻辑
     // // 当 Unit::takeDamage 被调用时，Sprite 会变成纯红色 (255, 0, 0, 255)
     // // 我们需要检测这种情况，把它改成半透明红色，然后慢慢淡出变回透明

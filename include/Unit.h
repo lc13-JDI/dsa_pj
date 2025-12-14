@@ -22,9 +22,12 @@ public:
 
     // 核心函数
     // dt = delta time (上一帧到这一帧经过的时间，秒)
-    virtual void update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles); 
+    virtual void update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData); 
 
     virtual void render(sf::RenderWindow& window) override;
+
+    // 设置初始战略目标（直接设置坐标）
+    void setStrategicTarget(float x, float y);
 
     // 设置移动目标
     void setTarget(float tx, float ty, const std::vector<std::vector<int>>& mapData);
@@ -46,9 +49,20 @@ protected:
     float m_speed;   // 像素/秒
     float m_range;   // 攻击距离
 
+    // 警戒范围 (发现敌人的距离)
+    float m_aggroRange; 
+    
+    // 战略目标 (当前要去的塔的坐标)
+    sf::Vector2f m_strategicTarget;
+    // 当前锁定的敌人 (非塔单位)
+    Unit* m_lockedEnemy; 
+
     // 攻击冷却
     float m_attackInterval; // 攻击间隔(秒)
     float m_attackTimer;    // 计时器
+
+    // 重寻路计时器 (用于追击移动中的敌人)
+    float m_repathTimer;
 
     // 记录朝向，用于静止攻击时的动画方向
     sf::Vector2f m_facingDir; 
@@ -86,6 +100,9 @@ protected:
     
     // 辅助：沿着路径移动
     void followPath(float dt);
+
+    // 重新计算通往战略目标的路径
+    void pathfindToStrategic(const std::vector<std::vector<int>>& mapData);
 
     // 虚函数，允许子类(如巨人)自定义寻敌逻辑
     virtual Unit* findClosestEnemy(const std::vector<Unit*>& allUnits);

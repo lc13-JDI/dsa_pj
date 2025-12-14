@@ -13,6 +13,7 @@ Game::Game() : m_running(false) {
     // 2. 初始化窗口和地图
     initWindow();
     initMap();
+    initUI();
     initTowers(); // 先初始化塔
     initUnits(); // 初始化单位
 }
@@ -57,11 +58,27 @@ void Game::initWindow() {
     m_bgSprite.setScale(scaleX, scaleY);
 }
 
+void Game::initUI() {
+    // 初始化游戏结束文字
+    try {
+        // 使用引用，防止拷贝
+        sf::Font& font = ResourceManager::getInstance().getFont("main_font");
+        m_gameOverText.setFont(font);
+        m_gameOverText.setCharacterSize(60);
+        m_gameOverText.setFillColor(sf::Color::White);
+        m_gameOverText.setOutlineColor(sf::Color::Black);
+        m_gameOverText.setOutlineThickness(3.f);
+        m_gameOverText.setString(""); // 初始为空
+    } catch (...) {
+        std::cerr << "[Game] Failed to set font for UI." << std::endl;
+    }
+}
+
 void Game::initMap() {
     // 1. 全部重置为平地
     m_mapData.assign(ROWS, std::vector<int>(COLS, GROUND));
 
-    // 2. 设置河流 (假设在第 9 行，横贯整个地图)
+    // 2. 设置河流 (假设在第 10 行，横贯整个地图)
     int riverRow = 10;
     for (int c = 0; c < COLS; c++) {
         m_mapData[riverRow][c] = RIVER;
@@ -117,56 +134,30 @@ void Game::initTowers() {
 }
 
 void Game::initUnits() {
-    // 测试 6 种兵种
-
-    // TEAM A (上方，红色方) ------------------------------
+    // 【修改】初始化时设置战略目标 (塔的坐标)
+    // 假设我们都知道塔的精确坐标：
+    // A左塔 (10, 6), A右塔 (14, 6)
+    // B左塔 (10, 14), B右塔 (14, 14)
     
-    // 1. Knight (对抗 Giant): 近战对砍
-    Unit* knight = new Knight(10 * TILE_SIZE, 6 * TILE_SIZE, TEAM_A);
-    knight->setTarget(10 * TILE_SIZE, 13 * TILE_SIZE, m_mapData);
-    m_units.push_back(knight);
-
-    // 2. Pekka (中路): 测试高伤害坦克
-    Unit* pekka = new Pekka(12 * TILE_SIZE, 7 * TILE_SIZE, TEAM_A);
-    pekka->setTarget(12 * TILE_SIZE, 12 * TILE_SIZE, m_mapData);
+    // Team A P.E.K.K.A 进攻中路 -> 目标 B 左塔
+    Unit* pekka = new Pekka(12 * TILE_SIZE, 8 * TILE_SIZE, TEAM_A);
+    pekka->setStrategicTarget(10 * TILE_SIZE + 20, 14 * TILE_SIZE + 20); 
     m_units.push_back(pekka);
 
-    // 3. Valkyrie (右路): 测试 AOE
-    Unit* valkyrie = new Valkyrie(14 * TILE_SIZE, 6 * TILE_SIZE, TEAM_A);
-    valkyrie->setTarget(14 * TILE_SIZE, 13 * TILE_SIZE, m_mapData);
+    // Team A Valkyrie 进攻右路 -> 目标 B 右塔
+    Unit* valkyrie = new Valkyrie(14 * TILE_SIZE, 8 * TILE_SIZE, TEAM_A);
+    valkyrie->setStrategicTarget(14 * TILE_SIZE + 20, 14 * TILE_SIZE + 20); 
     m_units.push_back(valkyrie);
 
-
-    // TEAM B (下方，蓝色方) ------------------------------
-
-    // 4. Giant (左路): 测试只打建筑
+    // Team B Giant 进攻左路 -> 目标 A 左塔
     Unit* giant = new Giant(10 * TILE_SIZE, 12 * TILE_SIZE, TEAM_B);
-    giant->setTarget(10 * TILE_SIZE, 7 * TILE_SIZE, m_mapData); 
+    giant->setStrategicTarget(10 * TILE_SIZE + 20, 6 * TILE_SIZE + 20); 
     m_units.push_back(giant);
-
-    // 5. Dart Goblin (中路后排): 远程高攻速
-    Unit* dg = new DartGoblin(12 * TILE_SIZE, 12 * TILE_SIZE, TEAM_B);
-    dg->setTarget(12 * TILE_SIZE, 7 * TILE_SIZE, m_mapData);
-    m_units.push_back(dg);
-
-    // 6. Archers (右路): 两个弓箭手围攻 Valkyrie (测试 AOE 效果)
-    Unit* archer1 = new Archers(14 * TILE_SIZE, 13 * TILE_SIZE, TEAM_B);
-    archer1->setTarget(13 * TILE_SIZE, 7 * TILE_SIZE, m_mapData);
-    m_units.push_back(archer1);
-
-    Unit* archer2 = new Archers(12 * TILE_SIZE, 13 * TILE_SIZE, TEAM_B);
-    archer2->setTarget(14 * TILE_SIZE, 8 * TILE_SIZE, m_mapData);
-    m_units.push_back(archer2);
-
-
-    // 【测试代码】 生成一个测试子弹
-    // 这里的 (300, 300) 是起点，knight 是目标
-    // 运行后你应该能看到一个黑点飞向 Knight，击中后消失
-    // ==========================================
-    Projectile* testProj = new Projectile(300.f, 300.f, knight, 20.f);
-    m_projectiles.push_back(testProj);
     
-    std::cout << "[Test] Spawning a test projectile targeting the Knight." << std::endl;
+    // Team B Knight 防守中路 (会主动索敌)
+    Unit* knight = new Knight(12 * TILE_SIZE, 12 * TILE_SIZE, TEAM_B);
+    knight->setStrategicTarget(12 * TILE_SIZE + 20, 5 * TILE_SIZE + 20); // 直接冲国王塔
+    m_units.push_back(knight);
 }
 
 void Game::run() {
@@ -199,7 +190,9 @@ void Game::logicLoop() {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        update(dt);
+        if (!m_gameOver) {
+            update(dt);
+        }
     }
 }
 
@@ -218,7 +211,7 @@ void Game::update(float dt) {
     // 1. 更新所有单位状态 (移动、攻击)
     for (auto unit : m_units) {
         // 传入 m_units 供单位寻找敌人
-        unit->update(dt, m_units, m_projectiles);
+        unit->update(dt, m_units, m_projectiles, m_mapData);
     }
 
     // 2. 更新所有子弹
@@ -240,9 +233,47 @@ void Game::update(float dt) {
     // 4. 清理尸体 (Remove Dead Units)
     auto it = m_units.begin();
     while (it != m_units.end()) {
-        if ((*it)->isDead()) {
-            delete *it; // 释放内存
-            it = m_units.erase(it); // 从列表移除
+        Unit* u = *it;
+        if (u->isDead()) {
+            // 【核心逻辑】检查是否是塔
+            Tower* t = dynamic_cast<Tower*>(u);
+            if (t) {
+                // 1. 生成废墟 Sprite
+                sf::Sprite ruin;
+                ruin.setTexture(ResourceManager::getInstance().getTexture("vfx_damaged"));
+                
+                // 设置废墟位置和原点
+                sf::FloatRect bounds = ruin.getLocalBounds();
+                ruin.setOrigin(bounds.width / 2.f, bounds.height / 2.f);
+                ruin.setPosition(t->getPosition());
+                // 稍微缩放一点以适应格子
+                ruin.setScale(0.5f, 0.5f);
+                
+                m_ruins.push_back(ruin);
+
+                // 2. 检查是否为国王塔 -> 游戏结束
+                if (t->isKing()) {
+                    m_gameOver = true;
+                    if (t->getTeam() == TEAM_A) {
+                        m_gameOverText.setString("Blue Wins!");
+                        m_gameOverText.setFillColor(sf::Color(100, 100, 255));
+                    } else {
+                        m_gameOverText.setString("Red Wins!");
+                        m_gameOverText.setFillColor(sf::Color(255, 60, 60));
+                    }
+                    
+                    // 居中显示文字
+                    sf::FloatRect textRect = m_gameOverText.getLocalBounds();
+                    m_gameOverText.setOrigin(textRect.left + textRect.width/2.0f,
+                                           textRect.top  + textRect.height/2.0f);
+                    m_gameOverText.setPosition(m_window.getSize().x/2.0f, m_window.getSize().y/2.0f);
+                    
+                    std::cout << "[Game] Game Over triggered!" << std::endl;
+                }
+            }
+
+            delete u; 
+            it = m_units.erase(it); 
         } else {
             ++it;
         }
@@ -290,6 +321,11 @@ void Game::render() {
         }
     }
 
+    // 绘制废墟 (在单位下方，背景上方)
+    for (const auto& ruin : m_ruins) {
+        m_window.draw(ruin);
+    }
+
     // 3. 绘制单位
     for (auto unit : m_units) {
         unit->render(m_window);
@@ -298,6 +334,15 @@ void Game::render() {
     // 绘制子弹
     for (auto proj : m_projectiles) {
         proj->render(m_window);
+    }
+
+    // 绘制游戏结束文字
+    if (m_gameOver) {
+        // 绘制一个半透明背景遮罩，让文字更清晰
+        sf::RectangleShape overlay(sf::Vector2f(m_window.getSize().x, m_window.getSize().y));
+        overlay.setFillColor(sf::Color(0, 0, 0, 150));
+        m_window.draw(overlay);
+        m_window.draw(m_gameOverText);
     }
 
     // 4. 显示窗口内容

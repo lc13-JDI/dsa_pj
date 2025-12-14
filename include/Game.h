@@ -48,8 +48,15 @@ private:
     // 2. 子弹列表
     std::vector<Projectile*> m_projectiles;
 
+    // 废墟列表 (存储已被摧毁的塔的废墟图)
+    std::vector<sf::Sprite> m_ruins;
+
     // 背景精灵
     sf::Sprite m_bgSprite;
+
+    // UI 文本
+    sf::Text m_gameOverText;
+    bool m_gameOver; // 游戏是否结束
     
     // --- 多线程相关 ---
     std::thread m_logicThread; // 逻辑线程
@@ -64,6 +71,7 @@ private:
     void initMap();
     void initUnits(); // 初始化测试单位
     void initTowers();
+    void initUI(); // 初始化 UI 元素
 
     // 核心循环逻辑
     void processEvents();

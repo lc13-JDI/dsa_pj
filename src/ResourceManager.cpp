@@ -69,6 +69,27 @@ sf::SoundBuffer& ResourceManager::getSoundBuffer(const std::string& name) {
     return m_soundBuffers.at(name);
 }
 
+// 字体加载实现
+void ResourceManager::loadFont(const std::string& name, const std::string& fileName) {
+    if (m_fonts.find(name) != m_fonts.end()) return;
+
+    sf::Font font;
+    if (font.loadFromFile(fileName)) {
+        m_fonts[name] = font;
+        std::cout << "[ResourceManager] Loaded Font: " << fileName << " as '" << name << "'" << std::endl;
+    } else {
+        std::cerr << "[ResourceManager] ERROR: Failed to load Font: " << fileName << std::endl;
+    }
+}
+
+sf::Font& ResourceManager::getFont(const std::string& name) {
+    if (m_fonts.find(name) == m_fonts.end()) {
+        std::cerr << "[ResourceManager] CRITICAL: Font not found: " << name << std::endl;
+        throw std::runtime_error("Font not found: " + name);
+    }
+    return m_fonts.at(name);
+}
+
 void ResourceManager::loadAllAssets() {
     std::cout << "--- Loading Assets ---" << std::endl;
 
@@ -118,6 +139,9 @@ void ResourceManager::loadAllAssets() {
     loadSoundBuffer("sfx_hit_knight", "assets/audio/knight_hit_sound.ogg");
     loadSoundBuffer("sfx_hit_pekka", "assets/audio/pekka_hit_sound.ogg");
     loadSoundBuffer("sfx_hit_valkyrie", "assets/audio/valkyrie_hit_sound.ogg");
+
+    // 6. 加载字体
+    loadFont("main_font", "assets/fonts/Supercell_Magic_Regular.ttf");
 
     std::cout << "--- Assets Loading Complete ---" << std::endl;
 }

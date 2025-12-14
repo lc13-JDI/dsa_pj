@@ -25,6 +25,11 @@ public:
     void loadSoundBuffer(const std::string& name, const std::string& fileName);
     sf::SoundBuffer& getSoundBuffer(const std::string& name);
 
+    // 字体管理
+    void loadFont(const std::string& name, const std::string& fileName);
+    sf::Font& getFont(const std::string& name);
+
+
     // --- 统一加载 ---
     // 一次性加载项目中所有已知的资源
     void loadAllAssets();
@@ -34,4 +39,5 @@ private:
 
     std::map<std::string, sf::Texture> m_textures;
     std::map<std::string, sf::SoundBuffer> m_soundBuffers;
+    std::map<std::string, sf::Font> m_fonts;
 };
