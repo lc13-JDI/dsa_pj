@@ -29,6 +29,13 @@ enum class UnitType {
     DART_GOBLIN
 };
 
+// 游戏难度枚举
+enum class Difficulty {
+    EASY,   // 简单：圣水恢复慢，反应迟钝
+    NORMAL, // 普通：圣水恢复同玩家，正常反应
+    HARD    // 困难：圣水恢复快，反应迅速
+};
+
 // 卡牌结构体：包含逻辑数据和渲染对象
 struct Card {
     UnitType type;          // 兵种类型
@@ -56,6 +63,8 @@ public:
     // UI 区域高度
     static const int UI_HEIGHT = 160; // 底部预留给卡牌和圣水条的高度
 
+    // 设置游戏难度
+    void setDifficulty(Difficulty level);
 
 private:
     // SFML 窗口
@@ -91,6 +100,9 @@ private:
     sf::Sprite m_elixirIcon;          // 圣水滴图标
     sf::Text m_elixirStatusText;      // 显示 "4/10" 的文字
 
+    // 难度选择 UI
+    sf::Text m_difficultyText;
+
     // 圣水逻辑数值
     float m_elixir;
     float m_maxElixir;
@@ -98,6 +110,14 @@ private:
 
      // 当前选中的卡牌索引 (-1 表示未选中)
     int m_selectedCardIndex;
+
+    // --- AI (敌方) 资源与状态 ---
+    float m_enemyElixir;
+    float m_enemyMaxElixir;  // 之前漏掉了这个变量的定义
+    float m_enemyElixirRate; // 敌方回费速度 (受难度影响)
+    float m_aiThinkTimer;    // AI 思考计时器
+    float m_aiReactionTime;  // AI 思考间隔 (受难度影响)
+    Difficulty m_difficulty;
     
     // 多线程相关 
     std::thread m_logicThread; // 逻辑线程
@@ -118,6 +138,10 @@ private:
     void processEvents();
    // update 函数不再被主线程调用，而是被 logicLoop 调用
     void update(float dt); 
+
+    // AI 核心逻辑
+    void updateAI(float dt); 
+
     void render();
     // 专门负责绘制 UI
     void renderUI();

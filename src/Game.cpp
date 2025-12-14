@@ -8,9 +8,15 @@
 #include <sstream>
 #include "ResourceManager.h"
 
+// 辅助函数：计算两个单位/点的距离
+static float distSq(sf::Vector2f a, sf::Vector2f b) {
+    return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+}
+
 Game::Game() 
     : m_running(false) , m_selectedCardIndex(-1),
-    m_elixir(5.0f), m_maxElixir(10.0f), m_elixirRate(0.7f) // 初始5费，上限10费，每秒回0.7费
+    m_elixir(5.0f), m_maxElixir(10.0f), m_elixirRate(0.7f), // 初始5费，上限10费，每秒回0.7费
+    m_enemyElixir(5.0f), m_enemyMaxElixir(10.0f),m_aiThinkTimer(0.f)
     {
     // 1. 加载资源
     ResourceManager::getInstance().loadAllAssets(); // 加载所有资源
@@ -21,6 +27,9 @@ Game::Game()
     initUI();
     initTowers(); // 先初始化塔
     initUnits(); // 初始化单位
+
+    // 默认设置普通难度
+    setDifficulty(Difficulty::NORMAL);
 }
 
 Game::~Game() {
@@ -41,6 +50,34 @@ Game::~Game() {
         delete proj;
     }
     m_projectiles.clear();
+}
+
+// 【新增】设置难度逻辑
+void Game::setDifficulty(Difficulty level) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_difficulty = level;
+    
+    switch (level) {
+        case Difficulty::EASY:
+            m_enemyElixirRate = 0.4f;   // 敌方回费很慢 (玩家 0.7)
+            m_aiReactionTime = 2.0f;    // 2秒才思考一次
+            m_difficultyText.setString("Difficulty: EASY (Press 1/2/3)");
+            m_difficultyText.setFillColor(sf::Color::Green);
+            break;
+        case Difficulty::NORMAL:
+            m_enemyElixirRate = 0.7f;   // 敌方回费同玩家
+            m_aiReactionTime = 1.0f;    // 1秒思考一次
+            m_difficultyText.setString("Difficulty: NORMAL (Press 1/2/3)");
+            m_difficultyText.setFillColor(sf::Color::Yellow);
+            break;
+        case Difficulty::HARD:
+            m_enemyElixirRate = 1.2f;   // 敌方回费极快
+            m_aiReactionTime = 0.5f;    // 反应极快
+            m_difficultyText.setString("Difficulty: HARD (Press 1/2/3)");
+            m_difficultyText.setFillColor(sf::Color::Red);
+            break;
+    }
+    std::cout << "[Game] Difficulty set to " << (int)level << std::endl;
 }
 
 void Game::initWindow() {
@@ -112,6 +149,13 @@ void Game::initUI() {
     m_elixirStatusText.setCharacterSize(18);
     m_elixirStatusText.setFillColor(sf::Color::White);
     m_elixirStatusText.setPosition(barX + barWidth + 10, barY);
+
+    // 难度显示UI
+    m_difficultyText.setFont(font);
+    m_difficultyText.setCharacterSize(16);
+    m_difficultyText.setPosition(10, 10); // 左上角
+    m_difficultyText.setOutlineColor(sf::Color::Black);
+    m_difficultyText.setOutlineThickness(1.5f);
 
     // 3. 初始化卡牌列表
     // 定义我们要添加的卡牌数据 (类型, 费用, 图标key)
@@ -308,6 +352,13 @@ void Game::processEvents() {
                 handleMouseClick(event.mouseButton.x, event.mouseButton.y);
             }
         }
+
+        // 键盘事件：调节难度
+        if (event.type == sf::Event::KeyPressed) {
+            if (event.key.code == sf::Keyboard::Num1) setDifficulty(Difficulty::EASY);
+            if (event.key.code == sf::Keyboard::Num2) setDifficulty(Difficulty::NORMAL);
+            if (event.key.code == sf::Keyboard::Num3) setDifficulty(Difficulty::HARD);
+        }
     }
 }
 
@@ -410,25 +461,126 @@ void Game::spawnUnit(UnitType type, float x, float y, int team) {
     }
 
     if (newUnit) {
-        // 设置初始战略目标 (玩家的兵目标是敌方塔)
-        // 简单逻辑：根据X坐标决定去左路还是右路
-        // 地图中心 X 约为 12 * 40 = 480
-        if (team == TEAM_B) { // 玩家
-            if (x < 12 * TILE_SIZE) 
-                newUnit->setStrategicTarget(10 * TILE_SIZE + 20, 6 * TILE_SIZE + 20); // 左公主塔
-            else 
-                newUnit->setStrategicTarget(14 * TILE_SIZE + 20, 6 * TILE_SIZE + 20); // 右公主塔
-        } else { // 敌人
-             if (x < 12 * TILE_SIZE) 
-                newUnit->setStrategicTarget(10 * TILE_SIZE + 20, 14 * TILE_SIZE + 20); // 左公主塔
-            else 
-                newUnit->setStrategicTarget(14 * TILE_SIZE + 20, 14 * TILE_SIZE + 20); // 右公主塔
+        // AI 和 玩家的目标选择逻辑
+        // 简单逻辑：攻击敌方公主塔
+        // 玩家(Team B)进攻 上方(Team A) 的塔
+        // AI(Team A) 进攻 下方(Team B) 的塔
+        float targetY = (team == TEAM_B) ? (6 * TILE_SIZE + 20) : (14 * TILE_SIZE + 20);
+        
+        // 左右路判断
+        float leftX = 10 * TILE_SIZE + 20;
+        float rightX = 14 * TILE_SIZE + 20;
+        
+        // 哪边近去哪边
+        if (std::abs(x - leftX) < std::abs(x - rightX)) {
+            newUnit->setStrategicTarget(leftX, targetY);
+        } else {
+            newUnit->setStrategicTarget(rightX, targetY);
         }
 
         m_units.push_back(newUnit);
-        std::cout << "[Game] Unit spawned at (" << x << ", " << y << ")" << std::endl;
     }
 }
+
+// 【新增】智能 AI 决策逻辑
+void Game::updateAI(float dt) {
+    // 1. 恢复圣水
+    if (m_enemyElixir < m_enemyMaxElixir) {
+        m_enemyElixir += m_enemyElixirRate * dt;
+        if (m_enemyElixir > m_enemyMaxElixir) m_enemyElixir = m_enemyMaxElixir;
+    }
+
+    // 2. 思考间隔 (模拟反应时间)
+    m_aiThinkTimer += dt;
+    if (m_aiThinkTimer < m_aiReactionTime) return;
+    m_aiThinkTimer = 0.f; // 重置计时器
+
+    // 3. 分析局势
+    Unit* nearestThreat = nullptr;
+    float minThreatDist = 99999.f;
+    int threatCount = 0;
+
+    // 敌方基地参考线 (AI在上方，所以防守线在河道上方一点，比如 Row 8)
+    float defenseLineY = 8 * TILE_SIZE;
+
+    for (auto u : m_units) {
+        // 寻找活着的、玩家的单位
+        if (u && !u->isDead() && u->getTeam() == TEAM_B) {
+            // 如果玩家单位越过河道 (Y < 10*40 = 400)
+            if (u->getPosition().y < 10 * TILE_SIZE) {
+                threatCount++;
+                float dist = u->getPosition().y; // 距离上边界的距离
+                if (dist < minThreatDist) {
+                    minThreatDist = dist;
+                    nearestThreat = u;
+                }
+            }
+        }
+    }
+
+    // 4. 决策：防守 vs 进攻
+
+    // --- A. 防守策略 (当有单位过河) ---
+    if (nearestThreat) {
+        // 如果圣水足够，进行防守
+        if (m_enemyElixir >= 4.0f) {
+            // 简单的克制逻辑
+            UnitType spawnType = UnitType::KNIGHT; // 默认用骑士防守
+            
+            // 如果威胁单位是 Giant (坦克)，用 Pekka (高伤) 防守
+            if (dynamic_cast<Giant*>(nearestThreat)) {
+                if (m_enemyElixir >= 7) spawnType = UnitType::PEKKA;
+                else spawnType = UnitType::KNIGHT;
+            } 
+            // 如果是 Archer (脆皮)，用 Valkyrie (群伤) 防守
+            else if (dynamic_cast<Archers*>(nearestThreat)) {
+                if (m_enemyElixir >= 4) spawnType = UnitType::VALKYRIE;
+            }
+
+            // 获取卡牌费用 (硬编码简化)
+            int cost = 3;
+            if (spawnType == UnitType::PEKKA) cost = 7;
+            if (spawnType == UnitType::VALKYRIE) cost = 4;
+
+            if (m_enemyElixir >= cost) {
+                // 在威胁单位前方一点点放置
+                float spawnX = nearestThreat->getPosition().x;
+                float spawnY = nearestThreat->getPosition().y - 60.0f; // 放在我方一侧
+                
+                // 边界检查，别放太上面
+                if (spawnY < 2 * TILE_SIZE) spawnY = 2 * TILE_SIZE;
+
+                spawnUnit(spawnType, spawnX, spawnY, TEAM_A);
+                m_enemyElixir -= cost;
+                std::cout << "[AI] Defending with unit type " << (int)spawnType << std::endl;
+                return; // 本次思考结束
+            }
+        }
+    }
+
+    // --- B. 进攻策略 (无威胁且圣水充裕) ---
+    // 如果圣水快满了 (>9)，必须进攻，防止圣水溢出浪费
+    else if (m_enemyElixir > 9.0f) {
+        // 随机选择左路 (10, 9) 或 右路 (14, 9) 的桥头
+        float bridgeY = 9 * TILE_SIZE; // 河道上方
+        float bridgeX = (rand() % 2 == 0) ? (10 * TILE_SIZE) : (14 * TILE_SIZE);
+        
+        // 优先放坦克
+        UnitType type = (rand() % 2 == 0) ? UnitType::GIANT : UnitType::PEKKA;
+        int cost = (type == UnitType::GIANT) ? 5 : 7;
+
+        // 如果钱不够皮卡，就放骑士
+        if (m_enemyElixir < cost) {
+            type = UnitType::KNIGHT;
+            cost = 3;
+        }
+
+        spawnUnit(type, bridgeX, bridgeY, TEAM_A);
+        m_enemyElixir -= cost;
+        std::cout << "[AI] Attacking bridge with unit type " << (int)type << std::endl;
+    }
+}
+
 
 void Game::update(float dt) {
     // 【加锁】因为我们要读取和修改 m_units，渲染线程也在读
@@ -438,6 +590,11 @@ void Game::update(float dt) {
     if (m_elixir < m_maxElixir) {
         m_elixir += m_elixirRate * dt;
         if (m_elixir > m_maxElixir) m_elixir = m_maxElixir;
+    }
+
+    // 调用 AI 逻辑
+    if (!m_gameOver) {
+        updateAI(dt);
     }
 
     // 1. 更新所有单位状态 (移动、攻击)
@@ -521,37 +678,37 @@ void Game::render() {
     // 1. 绘制背景图
     m_window.draw(m_bgSprite);
 
-    // //2. 绘制半透明网格 (调试用，如果不想看格子可以注释掉这一段)
-    // //这里我们只绘制 基地、河流和桥梁的调试色块，平地设为透明以便看到背景图
-    // sf::RectangleShape tileShape(sf::Vector2f(TILE_SIZE, TILE_SIZE));
-    // tileShape.setOutlineThickness(1.0f);
-    // tileShape.setOutlineColor(sf::Color(0, 0, 0, 50)); // 极淡的边框
+    //2. 绘制半透明网格 (调试用，如果不想看格子可以注释掉这一段)
+    //这里我们只绘制 基地、河流和桥梁的调试色块，平地设为透明以便看到背景图
+    sf::RectangleShape tileShape(sf::Vector2f(TILE_SIZE, TILE_SIZE));
+    tileShape.setOutlineThickness(1.0f);
+    tileShape.setOutlineColor(sf::Color(0, 0, 0, 50)); // 极淡的边框
 
-    // for (int r = 0; r < ROWS; r++) {
-    //     for (int c = 0; c < COLS; c++) {
-    //         tileShape.setPosition(c * TILE_SIZE, r * TILE_SIZE);
-    //         int type = m_mapData[r][c];
+    for (int r = 0; r < ROWS; r++) {
+        for (int c = 0; c < COLS; c++) {
+            tileShape.setPosition(c * TILE_SIZE, r * TILE_SIZE);
+            int type = m_mapData[r][c];
             
-    //         // 默认全透明，显示背景图
-    //         tileShape.setFillColor(sf::Color::Transparent); 
+            // 默认全透明，显示背景图
+            tileShape.setFillColor(sf::Color::Transparent); 
 
-    //         // 为特殊地形添加半透明遮罩，确认逻辑位置是否对齐
-    //         if (type == RIVER) {
-    //             tileShape.setFillColor(sf::Color(0, 0, 255, 100)); // 半透明蓝
-    //         } else if (type == BRIDGE) {
-    //             tileShape.setFillColor(sf::Color(139, 69, 19, 100)); // 半透明棕
-    //         } else if (type == BASE_A) {
-    //             tileShape.setFillColor(sf::Color(255, 0, 0, 150)); // 半透明红
-    //         } else if (type == BASE_B) {
-    //             tileShape.setFillColor(sf::Color(0, 0, 255, 150)); // 半透明蓝
-    //         }
+            // 为特殊地形添加半透明遮罩，确认逻辑位置是否对齐
+            if (type == RIVER) {
+                tileShape.setFillColor(sf::Color(0, 0, 255, 100)); // 半透明蓝
+            } else if (type == BRIDGE) {
+                tileShape.setFillColor(sf::Color(139, 69, 19, 100)); // 半透明棕
+            } else if (type == BASE_A) {
+                tileShape.setFillColor(sf::Color(255, 0, 0, 150)); // 半透明红
+            } else if (type == BASE_B) {
+                tileShape.setFillColor(sf::Color(0, 0, 255, 150)); // 半透明蓝
+            }
 
-    //         // 只有非平地才画出来 (或者你可以画所有格子调试)
-    //         if (type != GROUND) {
-    //             m_window.draw(tileShape);
-    //         }
-    //     }
-    // }
+            // 只有非平地才画出来 (或者你可以画所有格子调试)
+            if (type != GROUND) {
+                m_window.draw(tileShape);
+            }
+        }
+    }
 
     // 绘制废墟 (在单位下方，背景上方)
     for (const auto& ruin : m_ruins) {
@@ -571,12 +728,15 @@ void Game::render() {
     // 绘制 UI
     renderUI();
 
+    // 绘制难度文字
+    m_window.draw(m_difficultyText);
+
     // 绘制游戏结束文字
     if (m_gameOver) {
-        // // 绘制一个半透明背景遮罩，让文字更清晰
-        // sf::RectangleShape overlay(sf::Vector2f(m_window.getSize().x, m_window.getSize().y));
-        // overlay.setFillColor(sf::Color(0, 0, 0, 150));
-        // m_window.draw(overlay);
+        // 绘制一个半透明背景遮罩，让文字更清晰
+        sf::RectangleShape overlay(sf::Vector2f(m_window.getSize().x, m_window.getSize().y));
+        overlay.setFillColor(sf::Color(0, 0, 0, 150));
+        m_window.draw(overlay);
         m_window.draw(m_gameOverText);
     }
 

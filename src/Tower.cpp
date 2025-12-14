@@ -74,37 +74,27 @@ Tower::Tower(float x, float y, Team team, TowerType type)
 }
 
 void Tower::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) {
-    // // 0. 受击闪烁恢复逻辑
-    // // 当 Unit::takeDamage 被调用时，Sprite 会变成纯红色 (255, 0, 0, 255)
-    // // 我们需要检测这种情况，把它改成半透明红色，然后慢慢淡出变回透明
+    // 逻辑：如果当前颜色不是完全透明，说明刚刚受击变成了红色。
+    // 我们让它迅速淡出变回透明，而不是变成有颜色的状态。
+    sf::Color c = getSprite().getColor();
     
-    // sf::Color c = getSprite().getColor();
-    
-    // // 检测是否刚刚受击（变成了不透明红色）
-    // if (c.r == 255 && c.g == 0 && c.a == 255) {
-    //     c.a = 120; // 设置为半透明，制造“受击高亮”效果，但不遮挡背景太严重
-    //     getSprite().setColor(c);
-    // } 
-    // // 如果当前不是完全透明，说明正在闪烁，慢慢淡出
-    // else if (c.a > 0) {
-    //     // 淡出速度
-    //     int fadeSpeed = static_cast<int>(300 * dt); 
-    //     if (c.a > fadeSpeed) c.a -= fadeSpeed;
-    //     else c.a = 0; // 归零，变回完全透明
-    //     getSprite().setColor(c);
-    // }
-
-    // // 0. 颜色恢复 (Tower 有基础色)
-    // sf::Color baseColor = (m_team == TEAM_A) ? sf::Color(255, 100, 100) : sf::Color(100, 100, 255);
-    // sf::Color currColor = getSprite().getColor();
-    
-    // // 受击变红后恢复逻辑：如果 G/B 分量比基础色低，就加回来
-    // // 变红是: (255, 0, 0) -> 基础色 (255, 100, 100) or (100, 100, 255)
-    // // 简单的线性插值恢复
-    // if (currColor.r < baseColor.r) currColor.r += 5; else if (currColor.r > baseColor.r) currColor.r -= 5;
-    // if (currColor.g < baseColor.g) currColor.g += 5; else if (currColor.g > baseColor.g) currColor.g -= 5;
-    // if (currColor.b < baseColor.b) currColor.b += 5; else if (currColor.b > baseColor.b) currColor.b -= 5;
-
+    if (c.a > 0) { // 如果不透明
+        // 1. 如果是 Unit::takeDamage 设置的纯红 (255, 0, 0, 255)，立即改为半透明红，作为受击反馈
+        if (c.r == 255 && c.g == 0 && c.b == 0 && c.a == 255) {
+            c.a = 100; // 设置为半透明，稍微闪一下
+            getSprite().setColor(c);
+        }
+        // 2. 渐变消失 (Fade out)
+        else {
+            float fadeSpeed = 400.0f * dt; // 消失速度
+            if (c.a > fadeSpeed) {
+                c.a -= static_cast<sf::Uint8>(fadeSpeed);
+            } else {
+                c.a = 0; // 完全透明
+            }
+            getSprite().setColor(c);
+        }
+    }
 
     // 1. 攻击冷却
     if (m_attackTimer > 0) m_attackTimer -= dt;
