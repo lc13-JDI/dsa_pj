@@ -1,6 +1,8 @@
 #include "Game.h"
 #include <iostream>
 #include "Unit.h"
+#include "Tower.h"
+#include "Projectile.h"
 #include <chrono> // 用于线程休眠
 #include "ResourceManager.h"
 
@@ -11,6 +13,7 @@ Game::Game() : m_running(false) {
     // 2. 初始化窗口和地图
     initWindow();
     initMap();
+    initTowers(); // 先初始化塔
     initUnits(); // 初始化单位
 }
 
@@ -26,6 +29,12 @@ Game::~Game() {
         delete unit;
     }
     m_units.clear();
+
+    // 清理子弹内存
+    for (auto proj : m_projectiles) {
+        delete proj;
+    }
+    m_projectiles.clear();
 }
 
 void Game::initWindow() {
@@ -62,6 +71,7 @@ void Game::initMap() {
     m_mapData[riverRow][10] = BRIDGE;// 左桥
     m_mapData[riverRow][14] = BRIDGE;// 右桥
 
+    // 这里只是标记地形，实际生成塔在 initTowers
     // 4. 设置基地 (模仿皇室战争布局)
     // 甲方 (上方, Team A)
     m_mapData[5][12] = BASE_A;  // 国王塔 (中间)
@@ -80,6 +90,30 @@ void Game::initMap() {
     }
 
     std::cout << "[Info] Map initialized with CR layout." << std::endl;
+}
+
+// 【新增】根据地图生成塔对象
+void Game::initTowers() {
+    // 遍历地图寻找 BASE_A 和 BASE_B
+    // 注意：地图上的点是格子的，我们需要把它转成 Tower 对象
+    // 为了避免重复生成 (比如一个大基地占了多个格子)，我们这里手动指定坐标生成
+    // 这与 mapData 中的标记对应
+    
+    // Team A (上方)
+    // 国王塔
+    m_units.push_back(new Tower(12 * TILE_SIZE + 20, 5 * TILE_SIZE + 20, TEAM_A, TowerType::KING));
+    // 公主塔
+    m_units.push_back(new Tower(10 * TILE_SIZE + 20, 6 * TILE_SIZE + 20, TEAM_A, TowerType::PRINCESS));
+    m_units.push_back(new Tower(14 * TILE_SIZE + 20, 6 * TILE_SIZE + 20, TEAM_A, TowerType::PRINCESS));
+
+    // Team B (下方)
+    // 国王塔
+    m_units.push_back(new Tower(12 * TILE_SIZE + 20, 15 * TILE_SIZE + 20, TEAM_B, TowerType::KING));
+    // 公主塔
+    m_units.push_back(new Tower(10 * TILE_SIZE + 20, 14 * TILE_SIZE + 20, TEAM_B, TowerType::PRINCESS));
+    m_units.push_back(new Tower(14 * TILE_SIZE + 20, 14 * TILE_SIZE + 20, TEAM_B, TowerType::PRINCESS));
+
+    std::cout << "[Info] Towers initialized." << std::endl;
 }
 
 void Game::initUnits() {
@@ -123,6 +157,16 @@ void Game::initUnits() {
     Unit* archer2 = new Archers(12 * TILE_SIZE, 13 * TILE_SIZE, TEAM_B);
     archer2->setTarget(14 * TILE_SIZE, 8 * TILE_SIZE, m_mapData);
     m_units.push_back(archer2);
+
+
+    // 【测试代码】 生成一个测试子弹
+    // 这里的 (300, 300) 是起点，knight 是目标
+    // 运行后你应该能看到一个黑点飞向 Knight，击中后消失
+    // ==========================================
+    Projectile* testProj = new Projectile(300.f, 300.f, knight, 20.f);
+    m_projectiles.push_back(testProj);
+    
+    std::cout << "[Test] Spawning a test projectile targeting the Knight." << std::endl;
 }
 
 void Game::run() {
@@ -174,10 +218,26 @@ void Game::update(float dt) {
     // 1. 更新所有单位状态 (移动、攻击)
     for (auto unit : m_units) {
         // 传入 m_units 供单位寻找敌人
-        unit->update(dt, m_units);
+        unit->update(dt, m_units, m_projectiles);
     }
 
-    // 2. 清理尸体 (Remove Dead Units)
+    // 2. 更新所有子弹
+    for (auto proj : m_projectiles) {
+        proj->update(dt);
+    }
+
+    // 3. 清理非活跃子弹 (击中目标的)
+    auto projIt = m_projectiles.begin();
+    while (projIt != m_projectiles.end()) {
+        if (!(*projIt)->isActive()) {
+            delete *projIt;
+            projIt = m_projectiles.erase(projIt);
+        } else {
+            ++projIt;
+        }
+    }
+
+    // 4. 清理尸体 (Remove Dead Units)
     auto it = m_units.begin();
     while (it != m_units.end()) {
         if ((*it)->isDead()) {
@@ -195,7 +255,7 @@ void Game::render() {
 
     m_window.clear();
 
-    // 1. [新增] 绘制背景图
+    // 1. 绘制背景图
     m_window.draw(m_bgSprite);
 
     //2. 绘制半透明网格 (调试用，如果不想看格子可以注释掉这一段)
@@ -233,6 +293,11 @@ void Game::render() {
     // 3. 绘制单位
     for (auto unit : m_units) {
         unit->render(m_window);
+    }
+
+    // 绘制子弹
+    for (auto proj : m_projectiles) {
+        proj->render(m_window);
     }
 
     // 4. 显示窗口内容

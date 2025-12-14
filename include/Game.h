@@ -7,6 +7,7 @@
 
 
 class Unit; // 前向声明
+class Projectile;
 
 // 地形类型枚举
 enum TileType {
@@ -44,6 +45,9 @@ private:
     // 1. 单位列表 (使用指针实现多态)
     std::vector<Unit*> m_units; 
 
+    // 2. 子弹列表
+    std::vector<Projectile*> m_projectiles;
+
     // 背景精灵
     sf::Sprite m_bgSprite;
     
@@ -59,6 +63,7 @@ private:
     void initWindow();
     void initMap();
     void initUnits(); // 初始化测试单位
+    void initTowers();
 
     // 核心循环逻辑
     void processEvents();

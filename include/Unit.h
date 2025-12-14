@@ -6,6 +6,8 @@
 #include "Game.h" // 需要知道 TILE_SIZE
 #include "Movable.h"
 
+class Projectile; // 前向声明
+
 // 阵营枚举
 enum Team {
     TEAM_A, // 红色方 (上方)
@@ -20,7 +22,7 @@ public:
 
     // 核心函数
     // dt = delta time (上一帧到这一帧经过的时间，秒)
-    virtual void update(float dt, const std::vector<Unit*>& allUnits); 
+    virtual void update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles); 
 
     // 设置移动目标
     void setTarget(float tx, float ty, const std::vector<std::vector<int>>& mapData);
