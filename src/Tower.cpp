@@ -94,16 +94,16 @@ void Tower::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Pro
     //     getSprite().setColor(c);
     // }
 
-    // 0. 颜色恢复 (Tower 有基础色)
-    sf::Color baseColor = (m_team == TEAM_A) ? sf::Color(255, 100, 100) : sf::Color(100, 100, 255);
-    sf::Color currColor = getSprite().getColor();
+    // // 0. 颜色恢复 (Tower 有基础色)
+    // sf::Color baseColor = (m_team == TEAM_A) ? sf::Color(255, 100, 100) : sf::Color(100, 100, 255);
+    // sf::Color currColor = getSprite().getColor();
     
-    // 受击变红后恢复逻辑：如果 G/B 分量比基础色低，就加回来
-    // 变红是: (255, 0, 0) -> 基础色 (255, 100, 100) or (100, 100, 255)
-    // 简单的线性插值恢复
-    if (currColor.r < baseColor.r) currColor.r += 5; else if (currColor.r > baseColor.r) currColor.r -= 5;
-    if (currColor.g < baseColor.g) currColor.g += 5; else if (currColor.g > baseColor.g) currColor.g -= 5;
-    if (currColor.b < baseColor.b) currColor.b += 5; else if (currColor.b > baseColor.b) currColor.b -= 5;
+    // // 受击变红后恢复逻辑：如果 G/B 分量比基础色低，就加回来
+    // // 变红是: (255, 0, 0) -> 基础色 (255, 100, 100) or (100, 100, 255)
+    // // 简单的线性插值恢复
+    // if (currColor.r < baseColor.r) currColor.r += 5; else if (currColor.r > baseColor.r) currColor.r -= 5;
+    // if (currColor.g < baseColor.g) currColor.g += 5; else if (currColor.g > baseColor.g) currColor.g -= 5;
+    // if (currColor.b < baseColor.b) currColor.b += 5; else if (currColor.b > baseColor.b) currColor.b -= 5;
 
 
     // 1. 攻击冷却

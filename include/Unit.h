@@ -14,7 +14,7 @@ enum Team {
     TEAM_B  // 蓝色方 (下方)
 };
 
-// --- 基类 Unit 继承 Movable ---
+// 【基类 Unit 继承 Movable】
 class Unit : public Movable {
 public:
     Unit(float x, float y, Team team);
@@ -22,6 +22,9 @@ public:
 
     // 核心函数
     // dt = delta time (上一帧到这一帧经过的时间，秒)
+    // allUnits: 场上所有单位列表 (用于寻敌)
+    // projectiles: 子弹列表 (用于发射子弹)
+    // mapData: 地图数据 (用于寻路)
     virtual void update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData); 
 
     virtual void render(sf::RenderWindow& window) override;
@@ -34,23 +37,21 @@ public:
     
     // 获取状态
     bool isAlive() const { return m_hp > 0; }
+    bool isDead() const { return m_hp <= 0; }
 
     Team getTeam() const { return m_team; }
 
     // 战斗接口
     void takeDamage(float damage);
-    bool isDead() const { return m_hp <= 0; }
 
 protected: 
     Team m_team;
-    float m_hp;
-    float m_maxHp; // 记录最大血量
-    float m_atk;
+    float m_hp;     // 当前血量
+    float m_maxHp; // 最大血量
+    float m_atk;    // 攻击力
     float m_speed;   // 像素/秒
     float m_range;   // 攻击距离
-
-    // 警戒范围 (发现敌人的距离)
-    float m_aggroRange; 
+    float m_aggroRange;   // 警戒范围 (发现敌人的距离)
     
     // 战略目标 (当前要去的塔的坐标)
     sf::Vector2f m_strategicTarget;
@@ -67,15 +68,7 @@ protected:
     // 记录朝向，用于静止攻击时的动画方向
     sf::Vector2f m_facingDir; 
 
-    // // 移动相关
-    // sf::Vector2f m_targetPos;
-    // bool m_hasTarget;
-
-    // // 辅助函数：移动逻辑
-    // void moveTowardsTarget(float dt);
-
-    // --- 寻路相关 ---
-    // 存储一系列要走过的世界坐标点
+    // 寻路相关：存储一系列要走过的世界坐标点
     std::deque<sf::Vector2f> m_pathQueue; 
 
     //  音频组件
@@ -95,10 +88,10 @@ protected:
     // 更新 UI 状态 (位置、血量长度)
     void updateUI();
 
-    //  辅助函数：初始化音效
+    // 初始化音效
     void initSounds(const std::string& deployKey, const std::string& hitKey);
     
-    // 辅助：沿着路径移动
+    // 沿着路径移动
     void followPath(float dt);
 
     // 重新计算通往战略目标的路径
@@ -112,27 +105,27 @@ protected:
 };
 
 
-// --- 中间分类层 (提供默认数值模板) ---
-// --- 派生类 1: Tank (肉盾/巨人) ---
+// 【中间分类层】
+// 派生类 1: Tank (肉盾/巨人)
 class Tank : public Unit {
 public:
     Tank(float x, float y, Team team);
 };
 
-// --- 派生类 2: Melee (近战/骑士) ---
+// 派生类 2: Melee (近战/骑士)
 class Melee : public Unit {
 public:
     Melee(float x, float y, Team team);
 };
 
-// --- 派生类 3: Ranged (远程/弓箭手) ---
+// 派生类 3: Ranged (远程/弓箭手)
 class Ranged : public Unit {
 public:
     Ranged(float x, float y, Team team);
 };
 
 
-// --- 具体兵种实现 ---
+// 【具体兵种实现】
 
 // 1. Tank 类
 class Giant : public Tank {

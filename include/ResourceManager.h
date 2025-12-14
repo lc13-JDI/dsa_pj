@@ -37,6 +37,7 @@ public:
 private:
     ResourceManager() = default; // 私有构造函数
 
+    // 资源管理器数据
     std::map<std::string, sf::Texture> m_textures;
     std::map<std::string, sf::SoundBuffer> m_soundBuffers;
     std::map<std::string, sf::Font> m_fonts;

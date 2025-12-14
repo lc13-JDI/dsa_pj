@@ -20,13 +20,11 @@ Projectile::Projectile(float startX, float startY, Unit* target, float damage)
     // 3. 设置初始位置
     m_sprite.setPosition(startX, startY);
 
-    // 设置缩放（如果子弹图片过大）
+    // 设置缩放
     m_sprite.setScale(1.0f, 1.0f);
 }
 
-Projectile::~Projectile() {
-    // 可以在这里播放爆炸特效或音效
-}
+Projectile::~Projectile() {}
 
 void Projectile::update(float dt) {
     if (!m_active) return;
@@ -60,10 +58,6 @@ void Projectile::update(float dt) {
     sf::Vector2f normDir = dir / dist;
     // 位移 = 方向 * 速度 * 时间
     m_sprite.move(normDir * m_speed * dt);
-    
-    // // 5. 让子弹头部朝向目标 (简单的旋转计算)
-    // float angle = std::atan2(dir.y, dir.x) * 180.f / PI;
-    // m_sprite.setRotation(angle);
 }
 
 void Projectile::render(sf::RenderWindow& window) {

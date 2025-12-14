@@ -50,17 +50,14 @@ public:
     sf::Sprite& getSprite() { return m_sprite; }
 
 protected:
-    // 更新动画帧
     sf::Sprite m_sprite;
     AnimInfo m_animInfo;
-
-    // 动画计时器
-    float m_animationTimer;
-    int m_currentFrame;
-    
-    // 当前渲染的行号
-    int m_currentRow;
-    bool m_isFlipped;
+   
+    float m_animationTimer;// 动画计时器
+    int m_currentFrame;// 当前动画帧索引
+      
+    int m_currentRow;// 当前渲染的行号
+    bool m_isFlipped;// 是否水平翻转
 
     // 映射表: 索引 0=Up, 1=UpRight, 2=Right, 3=DownRight, 4=Down
     std::array<int, 5> m_walkRowMap;

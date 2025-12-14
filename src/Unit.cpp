@@ -2,14 +2,14 @@
 #include "Tower.h"
 #include "Pathfinder.h" 
 #include "ResourceManager.h"
-#include <cmath> // 用于 sqrt, atan2 等
+#include <cmath> 
 #include <iostream>
 
 // ======================= 基类 Unit =======================
 Unit::Unit(float x, float y, Team team) 
     : m_team(team), m_attackTimer(0.f), m_facingDir(0.f, 1.f), // 默认朝下
         m_hasCrown(false), m_barMaxWidth(40.f), m_lockedEnemy(nullptr),
-        m_repathTimer(0.f) // 【新增】初始化计时器
+        m_repathTimer(0.f) // 初始化计时器
 {
     // 默认属性 (作为一个兜底，子类会覆盖它)
     m_hp = 100.f;
@@ -20,7 +20,6 @@ Unit::Unit(float x, float y, Team team)
     m_aggroRange = 150.f; // 默认警戒范围
     m_attackInterval = 1.0f; // 默认1秒打一次
 
-    // [Movable 初始化]
     // 初始位置
     setPosition(x, y);
 
@@ -72,8 +71,6 @@ void Unit::initUI(bool hasCrown, float barWidth, float barHeight, float yOffset)
     // 3. 设置皇冠图标
     if (m_hasCrown) {
             m_crownSprite.setTexture(ResourceManager::getInstance().getTexture("ui_crown"));
-            // 稍微缩小一点，或者根据原图调整
-            // 原图可能比较大，这里假设稍微缩放
             // 假设皇冠放在血条左侧，稍微偏出一点
             sf::FloatRect bounds = m_crownSprite.getLocalBounds();
             m_crownSprite.setOrigin(bounds.width / 2.f, bounds.height / 2.f); // 底部中心
@@ -139,7 +136,7 @@ void Unit::takeDamage(float damage) {
 }
 
 // 默认寻敌：优先找士兵，其次找塔
-// 这里我们做一个改动：这个函数只负责“索敌范围”内的搜索
+// 这个函数只负责“索敌范围”内的搜索
 Unit* Unit::findClosestEnemy(const std::vector<Unit*>& allUnits) {
     Unit* closest = nullptr;
     float minDist = 99999.f;
@@ -153,14 +150,10 @@ Unit* Unit::findClosestEnemy(const std::vector<Unit*>& allUnits) {
         sf::Vector2f diff = other->getPosition() - this->getPosition();
         float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
 
-        // 只关注 aggroRange 内的
-        // 注意：如果是塔，我们不需要 aggroRange 限制？
-        // 不，我们希望单位只有走到塔附近才攻击塔，而不是隔着半个地图就锁定塔。
-        // 所以统一用 aggroRange 限制是合理的。
+        // 超出警戒范围则跳过
         if (dist > m_aggroRange) continue;
 
-        // 优先级逻辑：如果已经有一个非塔目标，就不考虑塔
-        // 或者简单点：找最近的即可。因为塔通常比较远，兵比较近。
+        // 找到最近的
         if (dist < minDist) {
             minDist = dist;
             closest = other;
@@ -173,10 +166,6 @@ Unit* Unit::findClosestEnemy(const std::vector<Unit*>& allUnits) {
 void Unit::performAttack(Unit* target, const std::vector<Unit*>& allUnits) {
     if (target) {
         target->takeDamage(m_atk);
-        // 播放攻击音效
-        // 为了防止音效过于频繁重叠（比如攻速极快时），可以检查是否正在播放
-        // 但对于打击感来说，通常直接播放或者用 stop() 再 play() 会更干脆
-        // m_hitSound.stop(); // 可选：打断上一次
         m_hitSound.play();
     }
 }
@@ -249,7 +238,7 @@ void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Proj
                 m_attackTimer = m_attackInterval; 
             }
         } else {
-            // --- 射程外，追击 (修复Bug: 使用寻路而非直线移动) ---
+            // --- 射程外，追击 
             m_repathTimer -= dt;
             
             // 如果路径走完了(但还没追上)，或者过了0.5秒(敌人位置变了)，就重新寻路
@@ -375,35 +364,6 @@ void Unit::followPath(float dt) {
 }
 
 
-// void Unit::moveTowardsTarget(float dt) {
-//     sf::Vector2f currentPos = m_shape.getPosition();
-//     sf::Vector2f direction = m_targetPos - currentPos;
-
-//     // 计算距离
-//     float distance = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-
-//     // 如果非常接近目标，就停止 (避免抖动)
-//     if (distance < 5.0f) {
-//         m_hasTarget = false;
-//         return;
-//     }
-
-//     // 归一化方向向量 (变成长度为1的向量)
-//     sf::Vector2f normalizedDir = direction / distance;
-
-//     // 移动公式：新位置 = 旧位置 + 方向 * 速度 * 时间增量
-//     sf::Vector2f newPos = currentPos + normalizedDir * m_speed * dt;
-//     m_shape.setPosition(newPos);
-// }
-
-// --- 子类构造函数调整 ---
-// 这里我们需要硬编码一些 Spritesheet 的参数，通常需要查看图片来确定
-// 假设：皇室战争素材大概是 5行 或 8行，每行 5-10 帧。
-// 让我们暂时假设：每帧 72x72 像素，一行 11 帧 (这在 CR 素材中很常见)
-
-
-// ======================= 中间层 =======================
-
 // ======================= 中间层 =======================
 
 Tank::Tank(float x, float y, Team team) : Unit(x, y, team) {
@@ -422,8 +382,7 @@ Ranged::Ranged(float x, float y, Team team) : Unit(x, y, team) {
 Giant::Giant(float x, float y, Team team) : Tank(x, y, team) {
     m_hp = 600.f; m_maxHp = 600.f; m_atk = 30.f; m_speed = 25.f; // 极肉，慢
     
-    // 配置动画参数 (请根据实际图片大小修改)
-    // 假设 Giant Spritesheet 很大
+    // 配置动画参数
     AnimInfo info;
     info.frameWidth = 201.5; info.frameHeight = 206; 
     info.walkFrames = 8;  info.attackFrames = 8;
