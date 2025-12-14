@@ -37,6 +37,9 @@ Tower::Tower(float x, float y, Team team, TowerType type)
         // 碰撞盒大小
         width = 80.f;
         height = 80.f;
+
+        // 【UI】有皇冠，血条较宽，位置较高
+        initUI(true, 60.f, 8.f, -40.f);
     } else { // KING
         // 国王塔数值
         m_maxHp = 2400.f;
@@ -47,6 +50,9 @@ Tower::Tower(float x, float y, Team team, TowerType type)
         // 国王塔稍大
         width = 100.f;
         height = 100.f;
+
+        // 【UI】有皇冠，血条更宽
+        initUI(true, 80.f, 10.f, -50.f);
     }
     
     m_hp = m_maxHp;
@@ -68,25 +74,37 @@ Tower::Tower(float x, float y, Team team, TowerType type)
 }
 
 void Tower::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles) {
-    // 0. 受击闪烁恢复逻辑
-    // 当 Unit::takeDamage 被调用时，Sprite 会变成纯红色 (255, 0, 0, 255)
-    // 我们需要检测这种情况，把它改成半透明红色，然后慢慢淡出变回透明
+    // // 0. 受击闪烁恢复逻辑
+    // // 当 Unit::takeDamage 被调用时，Sprite 会变成纯红色 (255, 0, 0, 255)
+    // // 我们需要检测这种情况，把它改成半透明红色，然后慢慢淡出变回透明
     
-    sf::Color c = getSprite().getColor();
+    // sf::Color c = getSprite().getColor();
     
-    // 检测是否刚刚受击（变成了不透明红色）
-    if (c.r == 255 && c.g == 0 && c.a == 255) {
-        c.a = 120; // 设置为半透明，制造“受击高亮”效果，但不遮挡背景太严重
-        getSprite().setColor(c);
-    } 
-    // 如果当前不是完全透明，说明正在闪烁，慢慢淡出
-    else if (c.a > 0) {
-        // 淡出速度
-        int fadeSpeed = static_cast<int>(300 * dt); 
-        if (c.a > fadeSpeed) c.a -= fadeSpeed;
-        else c.a = 0; // 归零，变回完全透明
-        getSprite().setColor(c);
-    }
+    // // 检测是否刚刚受击（变成了不透明红色）
+    // if (c.r == 255 && c.g == 0 && c.a == 255) {
+    //     c.a = 120; // 设置为半透明，制造“受击高亮”效果，但不遮挡背景太严重
+    //     getSprite().setColor(c);
+    // } 
+    // // 如果当前不是完全透明，说明正在闪烁，慢慢淡出
+    // else if (c.a > 0) {
+    //     // 淡出速度
+    //     int fadeSpeed = static_cast<int>(300 * dt); 
+    //     if (c.a > fadeSpeed) c.a -= fadeSpeed;
+    //     else c.a = 0; // 归零，变回完全透明
+    //     getSprite().setColor(c);
+    // }
+
+    // 0. 颜色恢复 (Tower 有基础色)
+    sf::Color baseColor = (m_team == TEAM_A) ? sf::Color(255, 100, 100) : sf::Color(100, 100, 255);
+    sf::Color currColor = getSprite().getColor();
+    
+    // 受击变红后恢复逻辑：如果 G/B 分量比基础色低，就加回来
+    // 变红是: (255, 0, 0) -> 基础色 (255, 100, 100) or (100, 100, 255)
+    // 简单的线性插值恢复
+    if (currColor.r < baseColor.r) currColor.r += 5; else if (currColor.r > baseColor.r) currColor.r -= 5;
+    if (currColor.g < baseColor.g) currColor.g += 5; else if (currColor.g > baseColor.g) currColor.g -= 5;
+    if (currColor.b < baseColor.b) currColor.b += 5; else if (currColor.b > baseColor.b) currColor.b -= 5;
+
 
     // 1. 攻击冷却
     if (m_attackTimer > 0) m_attackTimer -= dt;
@@ -107,6 +125,9 @@ void Tower::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Pro
             }
         }
     }
+
+    // 【关键】更新血条和皇冠位置
+    updateUI();
 }
 
 void Tower::shoot(Unit* target, std::vector<Projectile*>& projectiles) {

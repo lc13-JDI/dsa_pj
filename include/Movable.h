@@ -41,7 +41,7 @@ public:
     // 核心更新：需要传入当前状态和朝向向量
     void updateAnimation(float dt, sf::Vector2f dir, AnimState state);
 
-    void render(sf::RenderWindow& window);
+    virtual void render(sf::RenderWindow& window);
     
     void setPosition(float x, float y);
     void setPosition(const sf::Vector2f& pos);

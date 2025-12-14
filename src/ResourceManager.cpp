@@ -80,6 +80,7 @@ void ResourceManager::loadAllAssets() {
     loadTexture("ui_add", "assets/textures/addCard.png");
     loadTexture("ui_remove", "assets/textures/removeCard.png");
     loadTexture("vfx_damaged", "assets/textures/damaged_area.png");
+    loadTexture("ui_crown", "assets/textures/life_bar_crown.png");
     
     // 2. 投射物
     loadTexture("bullet", "assets/textures/bullet.png");

@@ -19,6 +19,77 @@ Unit::Unit(float x, float y, Team team)
     // [Movable 初始化]
     // 初始位置
     setPosition(x, y);
+
+    // 默认 UI 初始化 (防止忘记调用)
+    initUI(false); 
+}
+
+void Unit::initUI(bool hasCrown, float barWidth, float barHeight, float yOffset) {
+    m_hasCrown = hasCrown;
+    m_barMaxWidth = barWidth;
+    m_uiOffset = sf::Vector2f(0, yOffset);
+
+    // 1. 设置血条背景 (深灰色，带一点边框效果)
+    m_hpBarBg.setSize(sf::Vector2f(barWidth, barHeight));
+    m_hpBarBg.setFillColor(sf::Color(50, 50, 50));
+    m_hpBarBg.setOutlineThickness(1.f);
+    m_hpBarBg.setOutlineColor(sf::Color::Black);
+    // 中心点设为底部中心，方便定位
+    m_hpBarBg.setOrigin(barWidth / 2.f, barHeight / 2.f);
+
+    // 2. 设置血条前景
+    m_hpBarFg.setSize(sf::Vector2f(barWidth, barHeight));
+    // 根据阵营设置颜色: 红色方(A)用红色，蓝色方(B)用蓝色
+    if (m_team == TEAM_A) m_hpBarFg.setFillColor(sf::Color(255, 60, 60)); 
+    else                  m_hpBarFg.setFillColor(sf::Color(60, 100, 255));
+    m_hpBarFg.setOrigin(barWidth / 2.f, barHeight / 2.f);
+
+    // 3. 设置皇冠图标
+    if (m_hasCrown) {
+            m_crownSprite.setTexture(ResourceManager::getInstance().getTexture("ui_crown"));
+            // 稍微缩小一点，或者根据原图调整
+            // 原图可能比较大，这里假设稍微缩放
+            // 假设皇冠放在血条左侧，稍微偏出一点
+            sf::FloatRect bounds = m_crownSprite.getLocalBounds();
+            m_crownSprite.setOrigin(bounds.width / 2.f, bounds.height / 2.f); // 底部中心
+            m_crownSprite.setScale(0.2f, 0.2f);
+    }
+}
+
+void Unit::updateUI() {
+    // 1. 同步位置
+    sf::Vector2f basePos = getPosition() + m_uiOffset;
+    m_hpBarBg.setPosition(basePos);
+    
+    // 前景条的位置需要稍微调整，因为它宽度变化时 origin 还是中心，会导致两边缩
+    // SFML 的 setSize 是从左上角开始算的，但我们设置了 Origin
+    // 简单做法：前景条取消 Origin 的 X 轴居中，改为左对齐
+    m_hpBarFg.setPosition(basePos.x - m_barMaxWidth / 2.f, basePos.y - m_hpBarBg.getSize().y / 2.f);
+    
+    // 2. 更新血量百分比
+    float pct = m_hp / m_maxHp;
+    if (pct < 0) pct = 0;
+    m_hpBarFg.setSize(sf::Vector2f(m_barMaxWidth * pct, m_hpBarBg.getSize().y));
+    // 前景条 Origin 归零 (左上角)，方便宽度变化
+    m_hpBarFg.setOrigin(0, 0);
+
+    // 3. 皇冠位置 (在血条左上角或者正上方)
+    if (m_hasCrown) {
+        // 放在血条左上角稍微偏出的位置，模仿皇室战争
+        m_crownSprite.setPosition(basePos.x - m_barMaxWidth/2.f - 10.f, basePos.y);
+    }
+}
+
+void Unit::render(sf::RenderWindow& window) {
+    // 1. 绘制单位本体
+    Movable::render(window);
+
+    // 2. 绘制 UI (在单位上方)
+    window.draw(m_hpBarBg);
+    window.draw(m_hpBarFg);
+    if (m_hasCrown) {
+        window.draw(m_crownSprite);
+    }
 }
 
 // 初始化音效并播放部署声音
@@ -81,8 +152,17 @@ void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Proj
     if (getSprite().getColor() != sf::Color::White) {
         // 简单的颜色恢复渐变效果
         sf::Color c = getSprite().getColor();
-        if(c.g < 255) c.g += 5;
-        if(c.b < 255) c.b += 5;
+        if (m_team == TEAM_A) { // 红色方基础色
+             // 红色方不需要变白，这里简单恢复到白色或者保持原色
+             if(c.g < 255) c.g += 5;
+             if(c.b < 255) c.b += 5;
+        } else {
+             if(c.g < 255) c.g += 5;
+             if(c.b < 255) c.b += 5;
+        }
+        // 注意：Unit 基类默认是 White，Tower 会覆盖这个逻辑
+        // 这里为了简单，只做简单的受击变红 -> 恢复白色
+        // 真正颜色逻辑在 Tower 里重写了，普通兵全是白色底图
         getSprite().setColor(c);
     }
 
@@ -132,6 +212,9 @@ void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Proj
     // [关键] 更新动画和朝向
     // 更新动画：传入当前状态和朝向
     updateAnimation(dt, m_facingDir, currentState);
+
+    // 【关键】每帧更新 UI 位置和状态
+    updateUI();
 }
 
 // 计算路径
@@ -236,6 +319,9 @@ Giant::Giant(float x, float y, Team team) : Tank(x, y, team) {
     setWalkRows(9, 7, 6, 8, 5);
 
     initSounds("sfx_deploy_giant", "sfx_hit_giant");
+
+    // UI: 无皇冠，宽条，位置较高
+    initUI(false, 50.f, 6.f, -45.f);
 }
 
 // 巨人只攻击建筑。目前游戏中没有建筑Unit，所以他会忽略所有兵，
@@ -261,6 +347,8 @@ Pekka::Pekka(float x, float y, Team team) : Tank(x, y, team) {
     setWalkRows(6, 9, 8, 5, 7);
 
     initSounds("sfx_deploy_pekka", "sfx_hit_pekka");
+
+    initUI(false, 50.f, 6.f, -50.f);
 }
 
 // --- 3. Knight (骑士) ---
@@ -279,6 +367,8 @@ Knight::Knight(float x, float y, Team team) : Melee(x, y, team) {
     setWalkRows(6, 9, 8, 5, 7);
 
     initSounds("sfx_deploy_knight", "sfx_hit_knight");
+
+    initUI(false, 40.f, 5.f, -40.f);
 }
 
 // --- 4. Valkyrie (瓦基丽) ---
@@ -298,6 +388,8 @@ Valkyrie::Valkyrie(float x, float y, Team team) : Melee(x, y, team) {
     setWalkRows(8, 6, 9, 5, 7);
 
     initSounds("sfx_deploy_valkyrie", "sfx_hit_valkyrie");
+
+    initUI(false, 40.f, 5.f, -35.f);
 }
 
 // 瓦基丽的特色：AOE 攻击
@@ -335,6 +427,8 @@ Archers::Archers(float x, float y, Team team) : Ranged(x, y, team) {
     setWalkRows(9, 6, 8, 5, 7);
 
     initSounds("sfx_deploy_archers", "sfx_hit_archers");
+
+    initUI(false, 30.f, 4.f, -30.f);
 }
 
 // --- 6. Dart Goblin (吹箭哥布林) ---
@@ -355,4 +449,6 @@ DartGoblin::DartGoblin(float x, float y, Team team) : Ranged(x, y, team) {
     setWalkRows(6, 9, 8, 5, 7);
 
     initSounds("sfx_deploy_dartgoblin", "sfx_hit_dartgoblin");
+
+    initUI(false, 30.f, 4.f, -30.f);
 }

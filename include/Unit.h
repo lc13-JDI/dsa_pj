@@ -24,6 +24,8 @@ public:
     // dt = delta time (上一帧到这一帧经过的时间，秒)
     virtual void update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles); 
 
+    virtual void render(sf::RenderWindow& window) override;
+
     // 设置移动目标
     void setTarget(float tx, float ty, const std::vector<std::vector<int>>& mapData);
     
@@ -65,6 +67,19 @@ protected:
     //  音频组件
     sf::Sound m_deploySound; // 部署/出生时播放
     sf::Sound m_hitSound;    // 攻击造成伤害时播放
+
+    // --- UI 组件 ---
+    sf::RectangleShape m_hpBarBg; // 血条背景 (黑/灰)
+    sf::RectangleShape m_hpBarFg; // 血条前景 (红/蓝)
+    sf::Sprite m_crownSprite;     // 皇冠图标
+    bool m_hasCrown;              // 是否显示皇冠
+    sf::Vector2f m_uiOffset;      // UI 相对于单位中心的偏移量
+    float m_barMaxWidth;          // 血条最大宽度
+
+    // 初始化 UI 参数 (子类构造函数中调用)
+    void initUI(bool hasCrown, float barWidth = 40.f, float barHeight = 6.f, float yOffset = -40.f);
+    // 更新 UI 状态 (位置、血量长度)
+    void updateUI();
 
     //  辅助函数：初始化音效
     void initSounds(const std::string& deployKey, const std::string& hitKey);
