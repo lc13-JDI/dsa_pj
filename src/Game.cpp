@@ -8,10 +8,38 @@
 #include <sstream>
 #include "ResourceManager.h"
 
-// 辅助函数：计算两个单位/点的距离
-static float distSq(sf::Vector2f a, sf::Vector2f b) {
-    return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+// =================== 游戏配置区域 (修改这里即可调整地图布局) ===================
+namespace Config {
+    // 地图左右边界 (山脉) 的列号
+    // 任何在此列的格子都会变成山脉，阻挡单位
+    const int MAP_BOUNDARY_COL_LEFT = 5;
+    const int MAP_BOUNDARY_COL_RIGHT = 15;
+
+    // 网格坐标 (列 Col, 行 Row)
+    // Team A (敌方/上方)
+    const sf::Vector2i POS_KING_A(10, 2);      // 国王塔
+    const sf::Vector2i POS_PRINCESS_A_L(7, 4); // 左公主塔
+    const sf::Vector2i POS_PRINCESS_A_R(13, 4); // 右公主塔
+
+    // Team B (玩家/下方)
+    const sf::Vector2i POS_KING_B(10, 16);      // 国王塔
+    const sf::Vector2i POS_PRINCESS_B_L(7, 14); // 左公主塔
+    const sf::Vector2i POS_PRINCESS_B_R(13, 14); // 右公主塔
+
+    // 桥梁位置
+    const int BRIDGE_ROW = 9;
+    const int BRIDGE_COL_L = 7;
+    const int BRIDGE_COL_R = 13;
+
+    // 辅助：将网格转为世界坐标 (像素)
+    sf::Vector2f toWorld(sf::Vector2i gridPos) {
+        return sf::Vector2f(
+            gridPos.x * Game::TILE_SIZE + Game::TILE_SIZE / 2.0f,
+            gridPos.y * Game::TILE_SIZE + Game::TILE_SIZE / 2.0f
+        );
+    }
 }
+// ===========================================================================
 
 Game::Game() 
     : m_running(false) , m_selectedCardIndex(-1),
@@ -52,7 +80,7 @@ Game::~Game() {
     m_projectiles.clear();
 }
 
-// 【新增】设置难度逻辑
+// 设置难度逻辑
 void Game::setDifficulty(Difficulty level) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_difficulty = level;
@@ -141,8 +169,8 @@ void Game::initUI() {
 
     // 圣水图标 (左侧)
     m_elixirIcon.setTexture(ResourceManager::getInstance().getTexture("ui_elixir"));
-    m_elixirIcon.setScale(0.15f, 0.15f); // 原图可能很大，缩小一下
-    m_elixirIcon.setPosition(barX - 40, barY - 10);
+    m_elixirIcon.setScale(0.25f, 0.25f); // 原图可能很大，缩小一下
+    m_elixirIcon.setPosition(barX - 35, barY + 2);
 
     // 圣水文字 (右侧或条上)
     m_elixirStatusText.setFont(font);
@@ -203,7 +231,7 @@ void Game::initUI() {
         newCard.sprite.setScale(cardWidth / bounds.width, cardHeight / bounds.height);
         newCard.sprite.setPosition(currentX + 5, startY + 5); // 居中于 slot
 
-        // 【新增】卡牌上的费用数字
+        // 卡牌上的费用数字
         newCard.costText.setFont(font);
         newCard.costText.setString(std::to_string(newCard.cost));
         newCard.costText.setCharacterSize(14);
@@ -228,79 +256,61 @@ void Game::initMap() {
     // 1. 全部重置为平地
     m_mapData.assign(ROWS, std::vector<int>(COLS, GROUND));
 
-    // 2. 设置河流 (假设在第 10 行，横贯整个地图)
-    int riverRow = 10;
-    for (int c = 0; c < COLS; c++) {
-        m_mapData[riverRow][c] = RIVER;
+    // 使用 Config 设置河流与桥梁
+    int riverRow = Config::BRIDGE_ROW;
+    for (int c = 0; c < COLS; c++) m_mapData[riverRow][c] = RIVER;
+    m_mapData[riverRow][Config::BRIDGE_COL_L] = BRIDGE;
+    m_mapData[riverRow][Config::BRIDGE_COL_R] = BRIDGE;
+
+    // 使用 Config 设置基地位置标记
+    m_mapData[Config::POS_KING_A.y][Config::POS_KING_A.x] = BASE_A;
+    m_mapData[Config::POS_PRINCESS_A_L.y][Config::POS_PRINCESS_A_L.x] = BASE_A;
+    m_mapData[Config::POS_PRINCESS_A_R.y][Config::POS_PRINCESS_A_R.x] = BASE_A;
+
+    m_mapData[Config::POS_KING_B.y][Config::POS_KING_B.x] = BASE_B;
+    m_mapData[Config::POS_PRINCESS_B_L.y][Config::POS_PRINCESS_B_L.x] = BASE_B;
+    m_mapData[Config::POS_PRINCESS_B_R.y][Config::POS_PRINCESS_B_R.x] = BASE_B;
+
+    // 使用 Config 中定义的边界，而不是硬编码的数字
+    for (int r = 0; r < ROWS; r++) { 
+        // 设置左边界
+        if (Config::MAP_BOUNDARY_COL_LEFT >= 0 && Config::MAP_BOUNDARY_COL_LEFT < COLS) {
+            m_mapData[r][Config::MAP_BOUNDARY_COL_LEFT] = MOUNTAIN; 
+        }
+        // 设置右边界
+        if (Config::MAP_BOUNDARY_COL_RIGHT >= 0 && Config::MAP_BOUNDARY_COL_RIGHT < COLS) {
+            m_mapData[r][Config::MAP_BOUNDARY_COL_RIGHT] = MOUNTAIN; 
+        }
     }
-
-    // 3. 设置桥梁 (左桥和右桥)
-    m_mapData[riverRow][10] = BRIDGE;// 左桥
-    m_mapData[riverRow][14] = BRIDGE;// 右桥
-
-    // 这里只是标记地形，实际生成塔在 initTowers
-    // 4. 设置基地 (模仿皇室战争布局)
-    // 甲方 (上方, Team A)
-    m_mapData[5][12] = BASE_A;  // 国王塔 (中间)
-    m_mapData[6][10] = BASE_A;  // 左公主塔
-    m_mapData[6][14] = BASE_A; // 右公主塔
-
-    // 乙方 (下方, Team B)
-    m_mapData[15][12] = BASE_B; // 国王塔 (中间)
-    m_mapData[14][10] = BASE_B; // 左公主塔
-    m_mapData[14][14] = BASE_B;// 右公主塔
-
-    // 5. 设置边缘障碍 (可选，防止兵走出画面太远)
-    for (int r = 0; r < ROWS; r++) {
-        m_mapData[r][8] = MOUNTAIN;          // 左边界
-        m_mapData[r][16] = MOUNTAIN;         // 右边界
-    }
+    std::cout << "[Info] Map initialized." << std::endl;
 }
 
 // 根据地图生成塔对象
 void Game::initTowers() {
-    // 这与 mapData 中的标记对应
+    // 使用 Config 初始化塔
+    // Team A
+    sf::Vector2f kA = Config::toWorld(Config::POS_KING_A);
+    m_units.push_back(new Tower(kA.x, kA.y, TEAM_A, TowerType::KING));
     
-    // Team A (上方)
-    // 国王塔
-    m_units.push_back(new Tower(12 * TILE_SIZE + 20, 5 * TILE_SIZE + 20, TEAM_A, TowerType::KING));
-    // 公主塔
-    m_units.push_back(new Tower(10 * TILE_SIZE + 20, 6 * TILE_SIZE + 20, TEAM_A, TowerType::PRINCESS));
-    m_units.push_back(new Tower(14 * TILE_SIZE + 20, 6 * TILE_SIZE + 20, TEAM_A, TowerType::PRINCESS));
+    sf::Vector2f pAL = Config::toWorld(Config::POS_PRINCESS_A_L);
+    m_units.push_back(new Tower(pAL.x, pAL.y, TEAM_A, TowerType::PRINCESS));
+    
+    sf::Vector2f pAR = Config::toWorld(Config::POS_PRINCESS_A_R);
+    m_units.push_back(new Tower(pAR.x, pAR.y, TEAM_A, TowerType::PRINCESS));
 
-    // Team B (下方)
-    // 国王塔
-    m_units.push_back(new Tower(12 * TILE_SIZE + 20, 15 * TILE_SIZE + 20, TEAM_B, TowerType::KING));
-    // 公主塔
-    m_units.push_back(new Tower(10 * TILE_SIZE + 20, 14 * TILE_SIZE + 20, TEAM_B, TowerType::PRINCESS));
-    m_units.push_back(new Tower(14 * TILE_SIZE + 20, 14 * TILE_SIZE + 20, TEAM_B, TowerType::PRINCESS));
+    // Team B
+    sf::Vector2f kB = Config::toWorld(Config::POS_KING_B);
+    m_units.push_back(new Tower(kB.x, kB.y, TEAM_B, TowerType::KING));
+
+    sf::Vector2f pBL = Config::toWorld(Config::POS_PRINCESS_B_L);
+    m_units.push_back(new Tower(pBL.x, pBL.y, TEAM_B, TowerType::PRINCESS));
+
+    sf::Vector2f pBR = Config::toWorld(Config::POS_PRINCESS_B_R);
+    m_units.push_back(new Tower(pBR.x, pBR.y, TEAM_B, TowerType::PRINCESS));
 }
 
 void Game::initUnits() {
-    // 初始化时设置战略目标 (塔的坐标)
-    // 假设我们都知道塔的精确坐标：
-    // A左塔 (10, 6), A右塔 (14, 6)
-    // B左塔 (10, 14), B右塔 (14, 14)
-    
-    // Team A P.E.K.K.A 进攻中路 -> 目标 B 左塔
-    Unit* pekka = new Pekka(12 * TILE_SIZE, 8 * TILE_SIZE, TEAM_A);
-    pekka->setStrategicTarget(10 * TILE_SIZE + 20, 14 * TILE_SIZE + 20); 
-    m_units.push_back(pekka);
-
-    // Team A Valkyrie 进攻右路 -> 目标 B 右塔
-    Unit* valkyrie = new Valkyrie(14 * TILE_SIZE, 8 * TILE_SIZE, TEAM_A);
-    valkyrie->setStrategicTarget(14 * TILE_SIZE + 20, 14 * TILE_SIZE + 20); 
-    m_units.push_back(valkyrie);
-
-    // Team B Giant 进攻左路 -> 目标 A 左塔
-    Unit* giant = new Giant(10 * TILE_SIZE, 12 * TILE_SIZE, TEAM_B);
-    giant->setStrategicTarget(10 * TILE_SIZE + 20, 6 * TILE_SIZE + 20); 
-    m_units.push_back(giant);
-    
-    // Team B Knight 防守中路 (会主动索敌)
-    Unit* knight = new Knight(12 * TILE_SIZE, 12 * TILE_SIZE, TEAM_B);
-    knight->setStrategicTarget(12 * TILE_SIZE + 20, 5 * TILE_SIZE + 20); // 直接冲国王塔
-    m_units.push_back(knight);
+    // 空
 }
 
 void Game::run() {
@@ -414,9 +424,8 @@ void Game::handleMouseClick(int x, int y) {
             return;
         }
 
-        // C. 放置位置检查：只能放在己方半场 (下半场, row >= 10) 
-        // 简单规则：row > 10 或者是 已经过河的区域
-        if (row < 10) {
+        // C. 放置位置检查：只能放在己方半场
+        if (row < Config::BRIDGE_ROW) {
              std::cout << "[Game] Can only deploy on your side!" << std::endl;
              return;
         }
@@ -446,7 +455,7 @@ void Game::handleMouseClick(int x, int y) {
     }
 }
 
-// 【新增】生成单位工厂函数
+// 生成单位工厂函数
 void Game::spawnUnit(UnitType type, float x, float y, int team) {
     Unit* newUnit = nullptr;
     Team t = static_cast<Team>(team);
@@ -461,28 +470,28 @@ void Game::spawnUnit(UnitType type, float x, float y, int team) {
     }
 
     if (newUnit) {
-        // AI 和 玩家的目标选择逻辑
-        // 简单逻辑：攻击敌方公主塔
-        // 玩家(Team B)进攻 上方(Team A) 的塔
-        // AI(Team A) 进攻 下方(Team B) 的塔
-        float targetY = (team == TEAM_B) ? (6 * TILE_SIZE + 20) : (14 * TILE_SIZE + 20);
+        // 使用 Config 获取目标坐标
+        sf::Vector2f targetL, targetR;
+        if (team == TEAM_B) { // 玩家打 AI
+            targetL = Config::toWorld(Config::POS_PRINCESS_A_L);
+            targetR = Config::toWorld(Config::POS_PRINCESS_A_R);
+        } else { // AI 打 玩家
+            targetL = Config::toWorld(Config::POS_PRINCESS_B_L);
+            targetR = Config::toWorld(Config::POS_PRINCESS_B_R);
+        }
         
-        // 左右路判断
-        float leftX = 10 * TILE_SIZE + 20;
-        float rightX = 14 * TILE_SIZE + 20;
-        
-        // 哪边近去哪边
-        if (std::abs(x - leftX) < std::abs(x - rightX)) {
-            newUnit->setStrategicTarget(leftX, targetY);
+        // 简单的左右路判断
+        if (std::abs(x - targetL.x) < std::abs(x - targetR.x)) {
+            newUnit->setStrategicTarget(targetL.x, targetL.y);
         } else {
-            newUnit->setStrategicTarget(rightX, targetY);
+            newUnit->setStrategicTarget(targetR.x, targetR.y);
         }
 
         m_units.push_back(newUnit);
     }
 }
 
-// 【新增】智能 AI 决策逻辑
+// 智能 AI 决策逻辑
 void Game::updateAI(float dt) {
     // 1. 恢复圣水
     if (m_enemyElixir < m_enemyMaxElixir) {
@@ -500,16 +509,14 @@ void Game::updateAI(float dt) {
     float minThreatDist = 99999.f;
     int threatCount = 0;
 
-    // 敌方基地参考线 (AI在上方，所以防守线在河道上方一点，比如 Row 8)
-    float defenseLineY = 8 * TILE_SIZE;
+    // AI 防守线 (河道上方)
+    float defenseLineY = (Config::BRIDGE_ROW - 2) * TILE_SIZE;
 
     for (auto u : m_units) {
-        // 寻找活着的、玩家的单位
         if (u && !u->isDead() && u->getTeam() == TEAM_B) {
-            // 如果玩家单位越过河道 (Y < 10*40 = 400)
-            if (u->getPosition().y < 10 * TILE_SIZE) {
-                threatCount++;
-                float dist = u->getPosition().y; // 距离上边界的距离
+            // 玩家单位越过河道
+            if (u->getPosition().y < Config::BRIDGE_ROW * TILE_SIZE) {
+                float dist = u->getPosition().y; 
                 if (dist < minThreatDist) {
                     minThreatDist = dist;
                     nearestThreat = u;
@@ -561,19 +568,21 @@ void Game::updateAI(float dt) {
     // --- B. 进攻策略 (无威胁且圣水充裕) ---
     // 如果圣水快满了 (>9)，必须进攻，防止圣水溢出浪费
     else if (m_enemyElixir > 9.0f) {
-        // 随机选择左路 (10, 9) 或 右路 (14, 9) 的桥头
-        float bridgeY = 9 * TILE_SIZE; // 河道上方
-        float bridgeX = (rand() % 2 == 0) ? (10 * TILE_SIZE) : (14 * TILE_SIZE);
-        
-        // 优先放坦克
-        UnitType type = (rand() % 2 == 0) ? UnitType::GIANT : UnitType::PEKKA;
-        int cost = (type == UnitType::GIANT) ? 5 : 7;
+        // 随机左右路
+        float bridgeY = (Config::BRIDGE_ROW - 1) * TILE_SIZE; 
+        float bridgeX = (rand() % 2 == 0) ? (Config::BRIDGE_COL_L * TILE_SIZE) : (Config::BRIDGE_COL_R * TILE_SIZE);
+                
+        // // 优先放坦克
+        // UnitType type = (rand() % 2 == 0) ? UnitType::GIANT : UnitType::PEKKA;
+        // int cost = (type == UnitType::GIANT) ? 5 : 7;
 
-        // 如果钱不够皮卡，就放骑士
-        if (m_enemyElixir < cost) {
-            type = UnitType::KNIGHT;
-            cost = 3;
-        }
+        // // 如果钱不够皮卡，就放骑士
+        // if (m_enemyElixir < cost) {
+        //     type = UnitType::KNIGHT;
+        //     cost = 3;
+        // }
+        UnitType type = (rand() % 2 == 0) ? UnitType::KNIGHT : UnitType::PEKKA;
+        int cost = (type == UnitType::KNIGHT) ? 3 : 7;
 
         spawnUnit(type, bridgeX, bridgeY, TEAM_A);
         m_enemyElixir -= cost;

@@ -57,8 +57,8 @@ public:
 
     // 静态常量：定义地图大小
     static const int TILE_SIZE = 40; // 每个格子的像素大小
-    static const int ROWS = 20;      // 20行
-    static const int COLS = 25;      // 25列
+    static const int ROWS = 19;      // 行
+    static const int COLS = 21;      // 列
 
     // UI 区域高度
     static const int UI_HEIGHT = 160; // 底部预留给卡牌和圣水条的高度
