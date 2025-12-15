@@ -282,6 +282,11 @@ void Game::initMap() {
             m_mapData[r][Config::MAP_BOUNDARY_COL_RIGHT] = MOUNTAIN; 
         }
     }
+
+     // 初始化空间划分网格
+    // 大小 = 总行数 * 总列数
+    m_spatialGrid.resize(ROWS * COLS);
+
     std::cout << "[Info] Map initialized." << std::endl;
 }
 
@@ -595,6 +600,27 @@ void Game::update(float dt) {
     // 【加锁】因为我们要读取和修改 m_units，渲染线程也在读
     std::lock_guard<std::mutex> lock(m_mutex);
 
+    // --- 空间划分优化 (Spatial Partitioning) ---
+    // 步骤 1: 清空每一帧的网格
+    // vector::clear() 保留容量，速度很快
+    for (auto& cell : m_spatialGrid) {
+        cell.clear();
+    }
+
+    // 步骤 2: 将所有活着的单位注册到网格中
+    for (auto unit : m_units) {
+        if (unit && !unit->isDead()) {
+            int c = static_cast<int>(unit->getPosition().x) / TILE_SIZE;
+            int r = static_cast<int>(unit->getPosition().y) / TILE_SIZE;
+
+            // 边界检查，防止越界崩溃
+            if (c >= 0 && c < COLS && r >= 0 && r < ROWS) {
+                int index = r * COLS + c;
+                m_spatialGrid[index].push_back(unit);
+            }
+        }
+    }
+
     // 圣水恢复逻辑
     if (m_elixir < m_maxElixir) {
         m_elixir += m_elixirRate * dt;
@@ -608,7 +634,7 @@ void Game::update(float dt) {
 
     // 1. 更新所有单位状态 (移动、攻击)
     for (auto unit : m_units) {
-        unit->update(dt, m_units, m_projectiles, m_mapData);
+        unit->update(dt, m_spatialGrid, m_projectiles, m_mapData);
     }
 
     // 2. 更新所有子弹

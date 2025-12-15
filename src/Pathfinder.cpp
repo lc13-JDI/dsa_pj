@@ -12,6 +12,24 @@ struct Vector2iComparator {
     }
 };
 
+// 优先队列的节点结构
+struct Node {
+    sf::Vector2i pos; // 坐标
+    int priority;     // F 值 (G + H)
+
+    // 优先队列默认是大顶堆，我们需要小顶堆（F值越小越优先）
+    // 所以这里的 > 实际上是让 F 值小的排在前面
+    bool operator>(const Node& other) const {
+        return priority > other.priority;
+    }
+};
+
+// 启发函数：曼哈顿距离 (Manhattan Distance)
+// 适用于只能上下左右移动的网格地图
+int heuristic(sf::Vector2i a, sf::Vector2i b) {
+    return std::abs(a.x - b.x) + std::abs(a.y - b.y);
+}
+
 bool Pathfinder::isValid(const std::vector<std::vector<int>>& mapData, int r, int c) {
     int rows = mapData.size();
     int cols = mapData[0].size();
@@ -41,18 +59,22 @@ std::vector<sf::Vector2i> Pathfinder::findPath(
         return path;
     }
 
-    // BFS 队列
-    std::queue<sf::Vector2i> q;
-    q.push(start);
+    // 1. 优先队列 (Open Set)
+    // 存储待遍历的节点，F 值最小的在队首
+    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> openSet;
+    openSet.push({start, 0});
 
-    // 记录路径来源：cameFrom[current] = parent
-    // 用于最后回溯路径
+    // 2. 记录路径来源 (Came From)
+    // key: 当前点, value: 上一个点 (用于回溯路径)
     std::map<sf::Vector2i, sf::Vector2i, Vector2iComparator> cameFrom;
-    std::map<sf::Vector2i, bool, Vector2iComparator> visited;
 
-    visited[start] = true;
-    // 标记起点的来源是它自己（或者无效值），用于结束回溯
-    cameFrom[start] = start; 
+     // 3. 记录当前花费 (Cost So Far / G Cost)
+    // key: 坐标, value: 从起点到该点的实际代价
+    std::map<sf::Vector2i, int, Vector2iComparator> costSoFar;
+
+    // 初始化
+    cameFrom[start] = start;
+    costSoFar[start] = 0;
 
     bool found = false;
 
@@ -60,11 +82,12 @@ std::vector<sf::Vector2i> Pathfinder::findPath(
     int dr[] = {-1, 1, 0, 0};
     int dc[] = {0, 0, -1, 1};
 
-    while (!q.empty()) {
-        sf::Vector2i current = q.front();
-        q.pop();
+    while (!openSet.empty()) {
+        // 取出 F 值最小的节点
+        sf::Vector2i current = openSet.top().pos;
+        openSet.pop();
 
-        // 找到终点？
+        // 找到终点？提前结束
         if (current == end) {
             found = true;
             break;
@@ -72,32 +95,48 @@ std::vector<sf::Vector2i> Pathfinder::findPath(
 
         // 遍历邻居
         for (int i = 0; i < 4; i++) {
-            // 注意：sf::Vector2i 的 x 是列(col), y 是行(row)
             int nextR = current.y + dr[i];
             int nextC = current.x + dc[i];
-            sf::Vector2i nextNode(nextC, nextR);
+            sf::Vector2i next(nextC, nextR);
 
-            if (isValid(mapData, nextR, nextC) && !visited[nextNode]) {
-                visited[nextNode] = true;
-                cameFrom[nextNode] = current; // 记录父节点
-                q.push(nextNode);
+            // 如果邻居是障碍物，跳过
+            if (!isValid(mapData, nextR, nextC)) {
+                continue;
+            }
+
+            // 计算新的 G 值 (假设每格代价为 1)
+            int newCost = costSoFar[current] + 1;
+
+            // 如果该邻居没访问过，或者发现了更短的路径到达该邻居
+            if (costSoFar.find(next) == costSoFar.end() || newCost < costSoFar[next]) {
+                
+                // 更新 G 值
+                costSoFar[next] = newCost;
+                
+                // 计算 F 值 = G + H
+                int priority = newCost + heuristic(next, end);
+                
+                // 加入优先队列
+                openSet.push({next, priority});
+                
+                // 记录父节点
+                cameFrom[next] = current;
             }
         }
     }
 
+    // 路径重构 (回溯)
     if (found) {
-        // 回溯重构路径
         sf::Vector2i curr = end;
         while (curr != start) {
             path.push_back(curr);
             curr = cameFrom[curr];
         }
-        // path 目前是 终点 -> 起点，不需要把起点加进去（因为我们已经在起点了）
-        
+        // path 目前是 终点 -> 起点
         // 反转，变成 起点(不含) -> ... -> 终点
         std::reverse(path.begin(), path.end());
     } else {
-        std::cout << "[Pathfinder] No path found!" << std::endl;
+        // std::cout << "[Pathfinder] 未找到路径!" << std::endl;
     }
 
     return path;

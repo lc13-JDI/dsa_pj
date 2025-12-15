@@ -135,35 +135,55 @@ void Unit::takeDamage(float damage) {
     getSprite().setColor(sf::Color::Red);
 }
 
-// 默认寻敌：优先找士兵，其次找塔
-// 这个函数只负责“索敌范围”内的搜索
-Unit* Unit::findClosestEnemy(const std::vector<Unit*>& allUnits) {
+// 空间划分寻敌算法
+// 复杂度：O(K)，K 为周围格子内的单位数，远小于 O(N)
+Unit* Unit::findClosestEnemy(const std::vector<std::vector<Unit*>>& spatialGrid) {
     Unit* closest = nullptr;
     float minDist = 99999.f;
 
-    for (auto other : allUnits) {
-        if (!other) continue;
-        if (other == this) continue;
-        if (other->isDead()) continue;
-        if (other->getTeam() == this->getTeam()) continue; // 不打队友
+    // 1. 计算当前所在的网格坐标
+    sf::Vector2f myPos = getPosition();
+    int centerCol = static_cast<int>(myPos.x) / Game::TILE_SIZE;
+    int centerRow = static_cast<int>(myPos.y) / Game::TILE_SIZE;
 
-        sf::Vector2f diff = other->getPosition() - this->getPosition();
-        float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+    // 2. 计算需要搜索的格子半径
+    // 索敌范围 / 格子大小，向上取整
+    int searchRadius = static_cast<int>(std::ceil(m_aggroRange / Game::TILE_SIZE));
 
-        // 超出警戒范围则跳过
-        if (dist > m_aggroRange) continue;
+    // 3. 遍历周围的格子 (Square Loop)
+    for (int r = centerRow - searchRadius; r <= centerRow + searchRadius; ++r) {
+        for (int c = centerCol - searchRadius; c <= centerCol + searchRadius; ++c) {
+            
+            // 越界检查
+            if (r >= 0 && r < Game::ROWS && c >= 0 && c < Game::COLS) {
+                int index = r * Game::COLS + c;
+                
+                // 遍历该格子内的所有单位
+                const auto& cellUnits = spatialGrid[index];
+                for (auto other : cellUnits) {
+                    if (!other) continue;
+                    if (other == this) continue;
+                    if (other->isDead()) continue;
+                    if (other->getTeam() == this->getTeam()) continue; 
 
-        // 找到最近的
-        if (dist < minDist) {
-            minDist = dist;
-            closest = other;
+                    sf::Vector2f diff = other->getPosition() - myPos;
+                    float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+
+                    if (dist > m_aggroRange) continue;
+
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closest = other;
+                    }
+                }
+            }
         }
     }
     return closest;
 }
 
 // 默认攻击逻辑：单体伤害
-void Unit::performAttack(Unit* target, const std::vector<Unit*>& allUnits) {
+void Unit::performAttack(Unit* target, const std::vector<std::vector<Unit*>>& spatialGrid) {
     if (target) {
         target->takeDamage(m_atk);
         m_hitSound.play();
@@ -171,7 +191,7 @@ void Unit::performAttack(Unit* target, const std::vector<Unit*>& allUnits) {
 }
 
 // 【核心 AI 逻辑】
-void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) {
+void Unit::update(float dt,const std::vector<std::vector<Unit*>>& spatialGrid, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) {
     if (getSprite().getColor() != sf::Color::White) {
         // 简单的颜色恢复渐变效果
         sf::Color c = getSprite().getColor();
@@ -209,7 +229,7 @@ void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Proj
 
     // 2. 如果没有锁定敌人，尝试索敌 (Giant 会忽略这一步因为 findClosestEnemy 返回 nullptr)
     if (!m_lockedEnemy) {
-        Unit* potential = findClosestEnemy(allUnits);
+        Unit* potential = findClosestEnemy(spatialGrid);
         if (potential) {
             sf::Vector2f diff = potential->getPosition() - getPosition();
             float dist = std::sqrt(diff.x*diff.x + diff.y*diff.y);
@@ -234,7 +254,7 @@ void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Proj
             // 射程内 -> 攻击
             currentState = AnimState::ATTACK;
             if (m_attackTimer <= 0) {
-                performAttack(m_lockedEnemy, allUnits);
+                performAttack(m_lockedEnemy, spatialGrid);
                 m_attackTimer = m_attackInterval; 
             }
         } else {
@@ -264,14 +284,14 @@ void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Proj
         // (A) 检查当前战略目标（塔）是否还活着
         bool isStrategicAlive = false;
         // 简单判断：目标位置附近是否有活着的 Tower
-        for (auto u : allUnits) {
-            if (u->isDead()) continue;
-            // 必须是塔，必须是敌方
-            if (dynamic_cast<Tower*>(u) && u->getTeam() != m_team) {
-                sf::Vector2f diff = u->getPosition() - m_strategicTarget;
-                float d = std::sqrt(diff.x*diff.x + diff.y*diff.y);
-                // 如果距离非常近（同一个格子），说明塔还活着
-                if (d < 20.0f) {
+        int tCol = static_cast<int>(m_strategicTarget.x) / Game::TILE_SIZE;
+        int tRow = static_cast<int>(m_strategicTarget.y) / Game::TILE_SIZE;
+        
+        // 检查目标格子里的单位
+        if (tCol >= 0 && tCol < Game::COLS && tRow >= 0 && tRow < Game::ROWS) {
+            int idx = tRow * Game::COLS + tCol;
+            for (auto u : spatialGrid[idx]) {
+                if (dynamic_cast<Tower*>(u) && u->getTeam() != m_team && !u->isDead()) {
                     isStrategicAlive = true;
                     break;
                 }
@@ -280,8 +300,8 @@ void Unit::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Proj
 
         // (B) 如果目标塔挂了，切换到敌方国王塔
         if (!isStrategicAlive) {
-            float kingX = 12 * Game::TILE_SIZE + 20;
-            float kingY = (m_team == TEAM_A) ? (15 * Game::TILE_SIZE + 20) : (5 * Game::TILE_SIZE + 20);
+            float kingX = 10 * Game::TILE_SIZE + 20;
+            float kingY = (m_team == TEAM_A) ? (16 * Game::TILE_SIZE + 20) : (2 * Game::TILE_SIZE + 20);
             
             // 如果已经是国王塔了就不切了，避免死循环
             // 简单距离判断
@@ -406,24 +426,33 @@ Giant::Giant(float x, float y, Team team) : Tank(x, y, team) {
 // 巨人只攻击建筑。目前游戏中没有建筑Unit，所以他会忽略所有兵，
 // 这样他就会一直执行 moveToTarget 走向敌方基地。
 // Giant 只看塔
-Unit* Giant::findClosestEnemy(const std::vector<Unit*>& allUnits) {
+// 【修改】巨人只打建筑，使用空间网格加速
+Unit* Giant::findClosestEnemy(const std::vector<std::vector<Unit*>>& spatialGrid) {
     Unit* closest = nullptr;
     float minDist = 99999.f;
-    for (auto other : allUnits) {
-        if (!other || other == this || other->isDead() || other->getTeam() == this->getTeam()) continue;
-        
-        // 必须是塔
-        if (!dynamic_cast<Tower*>(other)) continue;
 
-        sf::Vector2f diff = other->getPosition() - this->getPosition();
-        float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
-        
-        // 同样受限于 aggroRange (或者 Giant 可以全图索敌？通常还是走过去再说)
-        // 为了让 Giant 走到塔面前再攻击，这里可以加上 Range 限制，
-        // 或者因为 Giant 的 update 里 m_pathQueue 会带他走过去，
-        // 所以当他走近时，这个函数自然会返回塔。
-        if (dist <= m_range + 20.0f) { // 稍微宽容一点，保证能停下来打
-             if (dist < minDist) { minDist = dist; closest = other; }
+    sf::Vector2f myPos = getPosition();
+    int centerCol = static_cast<int>(myPos.x) / Game::TILE_SIZE;
+    int centerRow = static_cast<int>(myPos.y) / Game::TILE_SIZE;
+    // 巨人索敌范围可以稍微大一点，或者全图
+    // 为了利用 spatialGrid，我们还是限定一个比较大的范围，比如 10 格
+    int searchRadius = 10; 
+
+    for (int r = centerRow - searchRadius; r <= centerRow + searchRadius; ++r) {
+        for (int c = centerCol - searchRadius; c <= centerCol + searchRadius; ++c) {
+            if (r >= 0 && r < Game::ROWS && c >= 0 && c < Game::COLS) {
+                int index = r * Game::COLS + c;
+                for (auto other : spatialGrid[index]) {
+                    if (!other || other == this || other->isDead() || other->getTeam() == this->getTeam()) continue;
+                    
+                    if (!dynamic_cast<Tower*>(other)) continue;
+
+                    sf::Vector2f diff = other->getPosition() - this->getPosition();
+                    float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+                    
+                    if (dist < minDist) { minDist = dist; closest = other; }
+                }
+            }
         }
     }
     return closest;
@@ -492,21 +521,33 @@ Valkyrie::Valkyrie(float x, float y, Team team) : Melee(x, y, team) {
 }
 
 // 瓦基丽的特色：AOE 攻击
-void Valkyrie::performAttack(Unit* target, const std::vector<Unit*>& allUnits) {
-    // 这里的 target 是主目标，但我们会遍历周围所有敌人
-    float aoeRadius = 50.0f; // AOE 半径
+// 【修改】瓦基丽的旋风斩 (AOE) 使用空间网格加速
+void Valkyrie::performAttack(Unit* target, const std::vector<std::vector<Unit*>>& spatialGrid) {
+    float aoeRadius = 60.0f; // AOE 半径 (稍微加大一点)
+    
+    // 计算周围涉及的格子
+    sf::Vector2f myPos = getPosition();
+    int centerCol = static_cast<int>(myPos.x) / Game::TILE_SIZE;
+    int centerRow = static_cast<int>(myPos.y) / Game::TILE_SIZE;
+    int searchRadius = static_cast<int>(std::ceil(aoeRadius / Game::TILE_SIZE));
 
-    for (auto other : allUnits) {
-        if (!other || other->isDead() || other->getTeam() == m_team) continue;
+    for (int r = centerRow - searchRadius; r <= centerRow + searchRadius; ++r) {
+        for (int c = centerCol - searchRadius; c <= centerCol + searchRadius; ++c) {
+            if (r >= 0 && r < Game::ROWS && c >= 0 && c < Game::COLS) {
+                int index = r * Game::COLS + c;
+                for (auto other : spatialGrid[index]) {
+                    if (!other || other->isDead() || other->getTeam() == m_team) continue;
 
-        sf::Vector2f diff = other->getPosition() - getPosition();
-        float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+                    sf::Vector2f diff = other->getPosition() - myPos;
+                    float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
 
-        if (dist <= aoeRadius) {
-            other->takeDamage(m_atk);
+                    if (dist <= aoeRadius) {
+                        other->takeDamage(m_atk);
+                    }
+                }
+            }
         }
     }
-    // 可以添加一个旋转特效，这里暂时省略
 }
 
 // --- 5. Archers (弓箭手) ---

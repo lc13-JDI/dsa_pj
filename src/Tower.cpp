@@ -73,7 +73,7 @@ Tower::Tower(float x, float y, Team team, TowerType type)
     m_sprite.setColor(sf::Color::Transparent); 
 }
 
-void Tower::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) {
+void Tower::update(float dt, const std::vector<std::vector<Unit*>>& spatialGrid, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) {
     // 逻辑：如果当前颜色不是完全透明，说明刚刚受击变成了红色。
     // 我们让它迅速淡出变回透明，而不是变成有颜色的状态。
     sf::Color c = getSprite().getColor();
@@ -100,7 +100,7 @@ void Tower::update(float dt, const std::vector<Unit*>& allUnits, std::vector<Pro
     if (m_attackTimer > 0) m_attackTimer -= dt;
 
     // 2. 寻找敌人
-    Unit* target = findClosestEnemy(allUnits);
+    Unit* target = findClosestEnemy(spatialGrid);
     
     // 3. 攻击逻辑
     if (target) {

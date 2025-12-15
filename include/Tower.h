@@ -13,7 +13,7 @@ public:
     virtual ~Tower() {}
 
     // 重写 update：塔不移动，但会发射子弹
-    virtual void update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) override;
+    virtual void update(float dt, const std::vector<std::vector<Unit*>>& spatialGrid, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) override;
 
     // 判断是否为国王塔
     bool isKing() const { return m_type == TowerType::KING; }

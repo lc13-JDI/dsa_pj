@@ -25,7 +25,7 @@ public:
     // allUnits: 场上所有单位列表 (用于寻敌)
     // projectiles: 子弹列表 (用于发射子弹)
     // mapData: 地图数据 (用于寻路)
-    virtual void update(float dt, const std::vector<Unit*>& allUnits, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData); 
+    virtual void update(float dt, const std::vector<std::vector<Unit*>>& spatialGrid, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData); 
 
     virtual void render(sf::RenderWindow& window) override;
 
@@ -98,10 +98,10 @@ protected:
     void pathfindToStrategic(const std::vector<std::vector<int>>& mapData);
 
     // 虚函数，允许子类(如巨人)自定义寻敌逻辑
-    virtual Unit* findClosestEnemy(const std::vector<Unit*>& allUnits);
+    virtual Unit* findClosestEnemy(const std::vector<std::vector<Unit*>>& spatialGrid);
 
     // 虚函数，允许子类(如瓦基丽)自定义攻击行为(例如AOE)
-    virtual void performAttack(Unit* target, const std::vector<Unit*>& allUnits);
+    virtual void performAttack(Unit* target, const std::vector<std::vector<Unit*>>& spatialGrid);
 };
 
 
@@ -132,7 +132,7 @@ class Giant : public Tank {
 public: 
     Giant(float x, float y, Team team);
     // 巨人只打建筑(目前表现为忽略小兵，只往基地走)
-    virtual Unit* findClosestEnemy(const std::vector<Unit*>& allUnits) override;
+    virtual Unit* findClosestEnemy(const std::vector<std::vector<Unit*>>& spatialGrid) override;
 };
 
 class Pekka : public Tank {
@@ -150,7 +150,7 @@ class Valkyrie : public Melee {
 public:
     Valkyrie(float x, float y, Team team);
     // 瓦基丽的旋风斩(AOE)
-    virtual void performAttack(Unit* target, const std::vector<Unit*>& allUnits) override;
+    virtual void performAttack(Unit* target, const std::vector<std::vector<Unit*>>& spatialGrid) override;
 };
 
 // 3. Ranged 类

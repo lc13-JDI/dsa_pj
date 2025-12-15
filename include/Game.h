@@ -74,6 +74,11 @@ private:
     // 使用 vector<vector<int>> 方便管理，存储的是 TileType 的整数值
     std::vector<std::vector<int>> m_mapData;
 
+    // --- 空间划分优化 ---
+    // 一维数组模拟二维网格，索引 = row * COLS + col
+    // 每个格子里存储该格子内的单位列表
+    std::vector<std::vector<Unit*>> m_spatialGrid;
+
     // 1. 单位列表
     std::vector<Unit*> m_units; 
 
