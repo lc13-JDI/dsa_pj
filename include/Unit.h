@@ -5,6 +5,7 @@
 #include <deque> // 使用双端队列存储路径
 #include "Game.h" // 需要知道 TILE_SIZE
 #include "Movable.h"
+#include "ObjectPool.h"
 
 class Projectile; // 前向声明
 
@@ -25,7 +26,11 @@ public:
     // allUnits: 场上所有单位列表 (用于寻敌)
     // projectiles: 子弹列表 (用于发射子弹)
     // mapData: 地图数据 (用于寻路)
-    virtual void update(float dt, const std::vector<std::vector<Unit*>>& spatialGrid, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData); 
+    virtual void update(float dt,
+                        const std::vector<std::vector<Unit*>>& spatialGrid, 
+                        std::vector<Projectile*>& activeProjectiles, 
+                        ObjectPool<Projectile>& projectilePool,
+                        const std::vector<std::vector<int>>& mapData); 
 
     virtual void render(sf::RenderWindow& window) override;
 

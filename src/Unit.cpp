@@ -191,7 +191,7 @@ void Unit::performAttack(Unit* target, const std::vector<std::vector<Unit*>>& sp
 }
 
 // 【核心 AI 逻辑】
-void Unit::update(float dt,const std::vector<std::vector<Unit*>>& spatialGrid, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) {
+void Unit::update(float dt,const std::vector<std::vector<Unit*>>& spatialGrid, std::vector<Projectile*>& activeProjectiles, ObjectPool<Projectile>& projectilePool, const std::vector<std::vector<int>>& mapData) {
     if (getSprite().getColor() != sf::Color::White) {
         // 简单的颜色恢复渐变效果
         sf::Color c = getSprite().getColor();

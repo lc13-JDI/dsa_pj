@@ -4,6 +4,7 @@
 #include <thread> 
 #include <mutex> 
 #include <atomic> // 用于线程安全的 bool
+#include "ObjectPool.h"
 
 // 前向声明
 class Unit; 
@@ -82,7 +83,10 @@ private:
     // 1. 单位列表
     std::vector<Unit*> m_units; 
 
-    // 2. 子弹列表
+    // 子弹对象池 (管理内存)
+    ObjectPool<Projectile> m_projectilePool;
+
+    // 2. 子弹列表 (仅管理当前活跃的指针)
     std::vector<Projectile*> m_projectiles;
 
     // 3. 废墟列表 (存储已被摧毁的塔的废墟图)

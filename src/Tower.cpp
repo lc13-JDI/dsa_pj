@@ -73,7 +73,7 @@ Tower::Tower(float x, float y, Team team, TowerType type)
     m_sprite.setColor(sf::Color::Transparent); 
 }
 
-void Tower::update(float dt, const std::vector<std::vector<Unit*>>& spatialGrid, std::vector<Projectile*>& projectiles, const std::vector<std::vector<int>>& mapData) {
+void Tower::update(float dt, const std::vector<std::vector<Unit*>>& spatialGrid, std::vector<Projectile*>& activeProjectiles, ObjectPool<Projectile>& projectilePool, const std::vector<std::vector<int>>& mapData) {
     // 逻辑：如果当前颜色不是完全透明，说明刚刚受击变成了红色。
     // 我们让它迅速淡出变回透明，而不是变成有颜色的状态。
     sf::Color c = getSprite().getColor();
@@ -110,7 +110,7 @@ void Tower::update(float dt, const std::vector<std::vector<Unit*>>& spatialGrid,
         if (dist <= m_range) {
             // 在射程内，且冷却完毕
             if (m_attackTimer <= 0) {
-                shoot(target, projectiles);
+                shoot(target, activeProjectiles, projectilePool);
                 m_attackTimer = m_attackInterval;
             }
         }
@@ -120,10 +120,10 @@ void Tower::update(float dt, const std::vector<std::vector<Unit*>>& spatialGrid,
     updateUI();
 }
 
-void Tower::shoot(Unit* target, std::vector<Projectile*>& projectiles) {
+void Tower::shoot(Unit* target, std::vector<Projectile*>& activeProjectiles, ObjectPool<Projectile>& projectilePool) {
     // 发射子弹
     // 为了视觉效果，让子弹从塔的“顶部”飞出 (y - 30 像素)
     // 这样看起来更有立体感
-    Projectile* p = new Projectile(getPosition().x, getPosition().y - 30.f, target, m_atk);
-    projectiles.push_back(p);
+    Projectile* p = projectilePool.acquire(getPosition().x, getPosition().y - 30.f, target, m_atk);
+    activeProjectiles.push_back(p);
 }

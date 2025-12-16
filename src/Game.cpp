@@ -74,9 +74,7 @@ Game::~Game() {
     m_units.clear();
 
     // 清理子弹内存
-    for (auto proj : m_projectiles) {
-        delete proj;
-    }
+    //不需要手动 delete Projectiles 了，ObjectPool 的析构函数会处理
     m_projectiles.clear();
 }
 
@@ -634,7 +632,7 @@ void Game::update(float dt) {
 
     // 1. 更新所有单位状态 (移动、攻击)
     for (auto unit : m_units) {
-        unit->update(dt, m_spatialGrid, m_projectiles, m_mapData);
+        unit->update(dt, m_spatialGrid, m_projectiles, m_projectilePool,m_mapData);
     }
 
     // 2. 更新所有子弹
@@ -646,7 +644,9 @@ void Game::update(float dt) {
     auto projIt = m_projectiles.begin();
     while (projIt != m_projectiles.end()) {
         if (!(*projIt)->isActive()) {
-            delete *projIt;
+            // 将子弹指针归还给池，而不是 delete
+            m_projectilePool.release(*projIt);
+            // 从活跃列表移除
             projIt = m_projectiles.erase(projIt);
         } else {
             ++projIt;
@@ -668,10 +668,10 @@ void Game::update(float dt) {
                 // 设置废墟位置和原点
                 sf::FloatRect bounds = ruin.getLocalBounds();
                 //ruin.setOrigin(bounds.width / 2.f, bounds.height / 2.f);
-                ruin.setOrigin(bounds.width / 2.f, 0.f);
+                ruin.setOrigin(bounds.width / 2.f, bounds.height / 2.f);
                 ruin.setPosition(t->getPosition());
                 // 稍微缩放一点以适应格子
-                ruin.setScale(0.25f, 0.25f);
+                ruin.setScale(0.3f, 0.3f);
                 
                 m_ruins.push_back(ruin);
 
@@ -787,11 +787,47 @@ void Game::renderUI() {
     // 1. 绘制圣水条
     m_window.draw(m_elixirBarBg);
     
-    // 计算前景条长度
-    float pct = m_elixir / m_maxElixir;
-    float maxW = m_elixirBarBg.getSize().x;
-    m_elixirBarFg.setSize(sf::Vector2f(maxW * pct, m_elixirBarBg.getSize().y));
-    m_window.draw(m_elixirBarFg);
+    // // 计算前景条长度
+    // float pct = m_elixir / m_maxElixir;
+    // float maxW = m_elixirBarBg.getSize().x;
+    // m_elixirBarFg.setSize(sf::Vector2f(maxW * pct, m_elixirBarBg.getSize().y));
+    // m_window.draw(m_elixirBarFg);
+    
+    // 绘制 10 个独立的圣水格子，而不是一根长条
+    float totalWidth = m_elixirBarBg.getSize().x;
+    float height = m_elixirBarBg.getSize().y;
+    // 格子间隙
+    float gap = 2.0f;
+    // 每个格子的宽度
+    float cellWidth = (totalWidth - (9 * gap)) / 10.0f;
+    
+    // 起始位置 (m_elixirBarBg 的 Origin 默认为 0,0)
+    sf::Vector2f startPos = m_elixirBarBg.getPosition(); 
+    
+    // 临时的格子形状
+    sf::RectangleShape cellShape;
+    cellShape.setFillColor(sf::Color(255, 0, 255)); // 亮紫色
+    
+    // 循环绘制 10 个格子
+    for (int i = 0; i < 10; ++i) {
+        float currentElixirThreshold = static_cast<float>(i + 1);
+        float fillRatio = 0.0f;
+        
+        // 计算当前格子应该填充多少 (0.0 ~ 1.0)
+        if (m_elixir >= currentElixirThreshold) {
+            fillRatio = 1.0f; // 满格
+        } else if (m_elixir > i) {
+            fillRatio = m_elixir - i; // 部分填充
+        }
+        
+        if (fillRatio > 0) {
+            cellShape.setSize(sf::Vector2f(cellWidth * fillRatio, height));
+            float cellX = startPos.x + i * (cellWidth + gap);
+            float cellY = startPos.y;
+            cellShape.setPosition(cellX, cellY);
+            m_window.draw(cellShape);
+        }
+    }
 
     // 绘制圣水图标
     m_window.draw(m_elixirIcon);

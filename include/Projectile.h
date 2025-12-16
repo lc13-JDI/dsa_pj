@@ -11,6 +11,10 @@ public:
     Projectile(float startX, float startY, Unit* target, float damage = 10.f);
     ~Projectile();
 
+    // 重置函数，用于对象池复用
+    void reset(float startX, float startY, Unit* target, float damage);
+
+
     // 每帧更新：计算飞行、碰撞检测
     void update(float dt);
     

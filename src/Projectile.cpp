@@ -26,6 +26,19 @@ Projectile::Projectile(float startX, float startY, Unit* target, float damage)
 
 Projectile::~Projectile() {}
 
+// 复用时的重置逻辑
+void Projectile::reset(float startX, float startY, Unit* target, float damage) {
+    m_target = target;
+    m_damage = damage;
+    m_active = true; // 重新标记为活跃
+    
+    // 重置位置
+    m_sprite.setPosition(startX, startY);
+    
+    // 重置旋转 (可选，update里会马上更新，但重置一下更安全)
+    m_sprite.setRotation(0.f);
+}
+
 void Projectile::update(float dt) {
     if (!m_active) return;
 
